@@ -1,4 +1,4 @@
-from be.server.context import socket_connections, chat_groups, dao
+from be.server.context import user_socket_connections, group_members, dao
 
 
 async def handle_room_chat(request) -> str:
@@ -15,7 +15,7 @@ async def handle_room_chat(request) -> str:
     message_timestamp = dao.register_new_message_in_room(
         sender_id, receiver_id, chat_room_id, message
     )
-    sender_connection = socket_connections[sender_id]
+    sender_socket_connection = user_socket_connections[sender_id]
     room_message = {
         "chat_type": "room",
         "user_id": sender_id,
@@ -23,10 +23,10 @@ async def handle_room_chat(request) -> str:
         "message": message, 
         "timestamp": message_timestamp
     }
-    await sender_connection.send_json(room_message)
-    if receiver_id in socket_connections:
-        receiver_connection = socket_connections[receiver_id]
-        await receiver_connection.send_json(room_message)
+    await sender_socket_connection.send_json(room_message)
+    if receiver_id in user_socket_connections:
+        receiver_socket_connection = user_socket_connections[receiver_id]
+        await receiver_socket_connection.send_json(room_message)
 
 
 async def handle_group_chat(request) -> str:
@@ -36,13 +36,13 @@ async def handle_group_chat(request) -> str:
     message_timestamp = dao.register_new_message_in_group(
         user_id, chat_group_id, message
     )
-    broadcast_message = {
+    group_message = {
         "chat_type": "group",
         "user_id": user_id, 
         "chat_group_id": chat_group_id, 
         "message": message, 
         "timestamp": message_timestamp
     }
-    for member_id in chat_groups[chat_group_id]:
-        member_connection = socket_connections[member_id]
-        await member_connection.send_json(broadcast_message)
+    for member_id in group_members[chat_group_id]:
+        member_socket_connection = user_socket_connections[member_id]
+        await member_socket_connection.send_json(group_message)

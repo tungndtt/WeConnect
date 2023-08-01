@@ -15,17 +15,17 @@ def _verify_request(request) -> None:
 
 
 async def handle_socket(socket_request):
-    socket_connection = web.WebSocketResponse()
-    await socket_connection.prepare(socket_request)
+    user_socket_connection = web.WebSocketResponse()
+    await user_socket_connection.prepare(socket_request)
     user_id = None
     try:
         # Init the socket connection corresponding to given user_id
-        request = await socket_connection.receive_json()
+        request = await user_socket_connection.receive_json()
         _verify_request(request)
         user_id = request["user_id"]
-        register_connection(user_id, socket_connection)
+        register_connection(user_id, user_socket_connection)
         while True:
-            request = await socket_connection.receive_json()
+            request = await user_socket_connection.receive_json()
             _verify_request(request)
             chat_type = request["chat_type"]
             if chat_type == "bot":
@@ -36,10 +36,10 @@ async def handle_socket(socket_request):
                 await handle_group_chat(request)
     except asyncio.CancelledError:
         print("[Socket] Client disconnected")
-    await socket_connection.close()
+    await user_socket_connection.close()
     if user_id is not None:
         deregister_connection(user_id)
-    return socket_connection
+    return user_socket_connection
 
 
 socket_routes = [
