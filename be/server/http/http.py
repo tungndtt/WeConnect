@@ -1,27 +1,29 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from be.server.context import host, http_port
+from aiohttp import web
+from be.server.http.authentication import handle_login, handle_logout
+from be.server.http.registration import handle_registration_confirm, handle_register
+from be.server.http.user import handle_get_all_users, handle_get_users_in_group, handle_get_user_information, handle_update_user
+from be.server.http.notification import handle_get_notifications, handle_update_notification
+from be.server.http.bot_chat import handle_get_bot_chat
+from be.server.http.chat_room import handle_get_chat_rooms, handle_get_chat_room
+from be.server.http.chat_group import handle_get_chat_groups, handle_get_chat_group, handle_register_chat_group, handle_update_chat_group
 
 
-class HttpHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(bytes("", "utf-8"))
-    
-    def do_POST(self) -> None:
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        self.wfile.write(bytes("", "utf-8"))
-
-
-async def run():
-    print("[HTTP]: Start running HTTP handler")
-    webServer = HTTPServer((host, http_port), HttpHandler)
-    try:
-        webServer.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    webServer.server_close()
-    print("[HTTP] HTTP handler stopped")
+http_routes = [
+    web.get("/http/login", handle_login),
+    web.get("/http/logout", handle_logout),
+    web.get("/http/register/{registration-token}", handle_registration_confirm),
+    web.post("/http/register", handle_register),
+    web.get("/http/users", handle_get_all_users),
+    web.get("/http/users/{group-id}", handle_get_users_in_group),
+    web.get("/http/users/information", handle_get_user_information),
+    web.put("/http/users", handle_update_user),
+    web.get("/http/notifications", handle_get_notifications),
+    web.put("/http/notifications", handle_update_notification),
+    web.get("/http/chat_bot", handle_get_bot_chat),
+    web.get("/http/chat_rooms", handle_get_chat_rooms),
+    web.get("/http/chat_room/{room-id}", handle_get_chat_room),
+    web.get("/http/chat_groups", handle_get_chat_groups),
+    web.get("/http/chat_group/{group-id}", handle_get_chat_group),
+    web.post("/http/chat_groups", handle_register_chat_group),
+    web.put("/http/chat_groups", handle_update_chat_group),
+]

@@ -26,6 +26,7 @@ class Database:
                 '''
                 CREATE TABLE IF NOT EXISTS chat_groups (
                     id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
                     owner_id INTEGER NOT NULL,
                 )
                 '''
@@ -53,6 +54,18 @@ class Database:
     def check_user_existence(self, email: str) -> bool:
         self._cursor("SELECT * FROM users WHERE email = ?", (email))
         return self._cursor.fetchone() is not None
+    
+    def get_user(self, email: str, password: str) -> int:
+        self._cursor.execute("SELECT id FROM users WHERE email = ? AND password = ?", (email, password))
+        user = self._cursor.fetchone()
+        if user is not None:
+            return user[0]
+        else:
+            return -1
+    
+    def get_all_users(self) -> list[Any]:
+        self._cursor.execute("SELECT id, first_name, last_name FROM users")
+        return self._cursor.fetchall()
 
     def get_users_information(self, users_id: list[int], is_private: bool) -> list[Any]:
         fields = "id, first_name, last_name" + (", email, password" if is_private else "")
@@ -92,8 +105,7 @@ class Database:
                 (email, password, first_name, last_name)
             )
             self._connection.commit()
-            self._cursor("SELECT id FROM users WHERE email = ?", (email))
-            user_id = self._cursor.fetchone()[0]
+            user_id = self._cursor.lastrowid
             self._cursor.execute(
                 f'''
                 CREATE TABLE user_{user_id}_notifications (
@@ -130,10 +142,7 @@ class Database:
                 (sender_id, receiver_id, current_timestamp)
             )
             self._connection.commit()
-            self._cursor(
-                "SELECT id FROM chat_rooms WHERE user_1 = ? AND user_2 = ?", (sender_id, receiver_id)
-            )
-            chat_room_id = self._cursor.fetchone()[0]
+            chat_room_id = self._cursor.lastrowid
             self._cursor.execute(
                 f'''
                 CREATE TABLE chat_room_{chat_room_id} (
@@ -151,12 +160,13 @@ class Database:
             self._connection.rollback()
             return None
 
-    def register_new_chat_group(self, creator_id: int) -> bool:
+    def register_new_chat_group(self, chat_group_name: str, creator_id: int) -> bool:
         try:
-            self._cursor.execute("INSERT INTO chat_groups (owner_id) VALUES (?)", (creator_id))
+            self._cursor.execute(
+                "INSERT INTO chat_groups (name, owner_id) VALUES (?)", (chat_group_name, creator_id)
+            )
             self._connection.commit()
-            self._cursor("SELECT id FROM chat_groups WHERE owner_id = ?", (creator_id))
-            chat_group_id = self._cursor.fetchone()[0]
+            chat_group_id = self._cursor.lastrowid
             self._cursor.execute(
                 f'''
                 CREATE TABLE chat_group_{chat_group_id} (
@@ -174,41 +184,37 @@ class Database:
             self._connection.rollback()
             return False
     
-    def register_new_message_with_bot(self, user_id: int, is_user: bool, message: str) -> bool:
+    def register_new_message_with_bot(self, user_id: int, is_user: bool, message: str) -> str:
         try:
+            current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             self._cursor.execute(
                 f"INSERT INTO user_{user_id}_bot_chat (is_user, message, timestamp) VALUES (?, ?)", 
-                (is_user, message, datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+                (is_user, message, current_timestamp)
             )
             self._connection.commit()
-            return True
+            return current_timestamp
         except Exception as error:
             print("[Database]: Cannot register new message in bot chat: " + error)
             self._connection.rollback()
-            return False
+            return ""
     
-    def register_new_message_in_group(self, sender_id: int, chat_group_id: int, message: str) -> bool:
+    def register_new_message_in_group(self, sender_id: int, chat_group_id: int, message: str) -> str:
         try:
+            current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             self._cursor.execute(
                 f"INSERT INTO chat_group_{chat_group_id} (user_id, message, timestamp) VALUES (?, ?)", 
-                (sender_id, message, datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+                (sender_id, message, current_timestamp)
             )
             self._connection.commit()
-            return True
+            return current_timestamp
         except Exception as error:
             print("[Database]: Cannot register new message in group chat: " + error)
             self._connection.rollback()
-            return False
+            return ""
 
-    def _get_chat_room_id(self, sender_id: int, receiver_id: int) -> int:
-        self._cursor(
-            "SELECT id FROM chat_rooms WHERE user_1 = ? AND user_2 = ? OR user_1 = ? AND user_2 = ?", 
-            (sender_id, receiver_id, receiver_id, sender_id)
-        )
-        return self._cursor.fetchone()[0]
-
-    def register_new_message_in_room(self, sender_id: int, chat_room_id: int, message: str) -> bool:
+    def register_new_message_in_room(self, sender_id: int, receiver_id: int, chat_room_id: int, message: str) -> str:
         try:
+            # register the message
             current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             self._cursor.execute(
                 f"INSERT INTO chat_room_{chat_room_id} (user_id, message, timestamp) VALUES (?, ?)", 
@@ -218,20 +224,8 @@ class Database:
                 f"UPDATE chat_rooms SET last_message_timestamp = ? WHERE chat_room_id = ?",
                 (current_timestamp, chat_room_id)
             )
-            self._connection.commit()
-            return True
-        except Exception as error:
-            print("[Database]: Cannot register new message in chat room: " + error)
-            self._connection.rollback()
-            return False
-    
-    def register_new_notification(self, sender_id: int, chat_room_id: int) -> bool:
-        try:
-            self._cursor.execute(f"SELECT user_1, user_2 FROM chat_rooms WHERE id = ?", (chat_room_id))
-            user_1, user_2 = self._cursor.fetchone()
-            receiver_id = user_1 if user_1 != sender_id else user_2
+            # register the notification
             self._cursor.execute(f"SELECT id FROM user_{receiver_id}_notifications WHERE chat_room_id = ?", (chat_room_id))
-            current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             if self._cursor.fetchone() is None:
                 self._cursor.execute(
                     f"INSERT INTO user_{receiver_id}_notifications (sender_id, chat_room_id, is_read, timestamp) VALUES (?, ?)", 
@@ -243,13 +237,15 @@ class Database:
                     (False, current_timestamp, chat_room_id)
                 )
             self._connection.commit()
-            return True
+            return current_timestamp
         except Exception as error:
-            print("[Database]: Cannot register new notification: " + error)
+            print("[Database]: Cannot register new message in chat room: " + error)
             self._connection.rollback()
-            return False
+            return ""
 
-    def update_user_information(self, user_id: int, first_name: Optional[str], last_name: Optional[str], password: Optional[str]) -> bool:
+    def update_user_information(
+        self, user_id: int, first_name: Optional[str], last_name: Optional[str], password: Optional[str]
+    ) -> bool:
         try:
             query = "UPDATE users SET"
             values = []

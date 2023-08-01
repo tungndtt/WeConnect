@@ -1,8 +1,7 @@
 import openai
 import os
 import time
-from typing import Any
-from be.server.context import socket_connections, botchat_messages, database
+from be.server.context import socket_connections, botchat_messages, dao
 
 
 _message_limit = int(os.environ.get("MESSAGE_LIMIT", 10))
@@ -13,13 +12,13 @@ if _openai_api_key is None:
 openai.api_key = _openai_api_key
 
 
-def handle_bot_chat(request: Any) -> str:
+async def handle_bot_chat(request) -> str:
     user_id = request["user_id"]
     message = request["message"]
     messages = botchat_messages[user_id]
     messages.append({"role": "user", "content": message})
     #TODO: check the insert status
-    database.register_new_message_with_bot(user_id, True, message)
+    message_timestamp = dao.register_new_message_with_bot(user_id, True, message)
     if len(messages) > _message_limit:
         messages = messages[2:]
     while True:
@@ -35,10 +34,15 @@ def handle_bot_chat(request: Any) -> str:
             time.sleep(4)
     messages.append({"role": "assistant", "content": response})
     #TODO: check the insert status
-    database.register_new_message_with_bot(user_id, False, response)
+    response_timestamp = dao.register_new_message_with_bot(user_id, False, response)
     user_connection = socket_connections[user_id]
-    #TODO: Notify user new message response from bot
-    user_connection.send()
+    await user_connection.send_json({
+        "chat_type": "bot", 
+        "messages": [
+            { "is_user": True, "message": message, "timestamp": message_timestamp},
+            { "is_user": False, "message": response, "timestamp": response_timestamp},
+        ]
+    })
     
     
 
