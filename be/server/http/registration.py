@@ -1,7 +1,7 @@
 import smtplib
 import os
-from aiohttp import web
 from be.jwt.jwt import generate_token, verify_token
+from be.server.http.misc import generate_json_response
 from be.server.context import dao
 
 
@@ -52,11 +52,11 @@ async def handle_registration_confirm(request):
     is_valid, payload = verify_token(registration_token)
     if is_valid:
         status = dao.register_new_user(**payload)
-        return web.json_response({"status": status})
+        return generate_json_response(status, None)
     elif payload is not None:
-        return web.json_response({"status": False, "data": "Link is already expired"})
+        return generate_json_response(False, "Link is already expired")
     else:
-        return web.json_response({"status": False, "data": "Invalid registration token"})
+        return generate_json_response(False, "Invalid registration token")
 
 
 async def handle_register(request):
@@ -66,9 +66,7 @@ async def handle_register(request):
         if field in payload:
             data[field] = payload[field]
         else:
-            return web.json_response({
-                "status": False, "data": f"'{field}' cannot be empty"
-            })
+            return generate_json_response(False, f"'{field}' cannot be empty")
     registration_token = generate_token(data, _registration_duration)
     status = _email_handler.send_email(payload["email"], f"{_host}:{_port}/http/register/{registration_token}")
-    return web.json_response({"status": status})
+    return generate_json_response(status, None)

@@ -1,19 +1,19 @@
 from aiohttp import web
+from be.server.http.misc import verify_request, generate_json_response
+from be.server.context import dao
 
 
+@verify_request
 async def handle_get_notifications(request):
-    name = request.match_info.get('name', "Anonymous")
-    text = "Hello, " + name
-    return web.Response(text=text)
+    notifications = dao.get_notifications(request.user_id)
+    return generate_json_response(True, notifications)
 
 
-async def handle_get_users(request):
-    name = request.match_info.get('name', "Anonymous")
-    text = "Hello, " + name
-    return web.Response(text=text)
-
-
+@verify_request
 async def handle_update_notification(request):
-    name = request.match_info.get('name', "Anonymous")
-    text = "Hello, " + name
-    return web.Response(text=text)
+    request_body = await request.json()
+    if "chat_room_id" not in request_body:
+        return web.json_response({""})
+    chat_room_id = request_body["chat_room_id"]
+    status = dao.update_read_notification(request.user_id, chat_room_id)
+    return generate_json_response(status, None)

@@ -5,7 +5,7 @@ from be.server.http.user import handle_get_all_users, handle_get_users_in_group,
 from be.server.http.notification import handle_get_notifications, handle_update_notification
 from be.server.http.bot_chat import handle_get_bot_chat
 from be.server.http.chat_room import handle_get_chat_rooms, handle_get_chat_room
-from be.server.http.chat_group import handle_get_chat_groups, handle_get_chat_group, handle_register_chat_group, handle_update_chat_group
+from be.server.http.chat_group import handle_get_chat_groups, handle_get_chat_group, handle_register_chat_group, handle_update_chat_group_name
 
 
 http_routes = [
@@ -25,5 +25,5 @@ http_routes = [
     web.get("/http/chat_groups", handle_get_chat_groups),
     web.get("/http/chat_group/{group-id}", handle_get_chat_group),
     web.post("/http/chat_groups", handle_register_chat_group),
-    web.put("/http/chat_groups", handle_update_chat_group),
+    web.put("/http/chat_groups", handle_update_chat_group_name),
 ]

@@ -269,6 +269,19 @@ class Database:
             self._connection.rollback()
             return False
 
+    def update_chat_group_name(self, chat_group_id: int, name: str) -> bool:
+        try:
+            self._cursor.execute(
+                f"UPDATE chat_groups SET name = ? WHERE id = ?", 
+                (name, chat_group_id)
+            )
+            self._connection.commit()
+            return True
+        except Exception as error:
+            print("[Database]: Cannot update notification status: " + error)
+            self._connection.rollback()
+            return False
+
     def update_read_notification(self, user_id: int, chat_room_id: int) -> bool:
         try:
             self._cursor.execute(
