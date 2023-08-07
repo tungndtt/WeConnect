@@ -1,4 +1,5 @@
 from aiohttp import web
+from datetime import datetime
 from be.jwt.jwt import verify_token
 from be.server.context import deregister_connection
 
@@ -22,3 +23,13 @@ async def verify_request(handler):
 
 def generate_json_response(status, response):
     return web.json_response({"status": status, "data": response})
+
+
+def extract_timestamp_args(request_body):
+    if "timestamp" not in request_body:
+        timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        before = True
+    else:
+        timestamp = request_body["timestamp"]
+        before = request_body["before"] if "before" in request_body else False
+    return timestamp, before

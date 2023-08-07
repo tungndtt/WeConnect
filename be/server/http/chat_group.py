@@ -1,6 +1,6 @@
 from datetime import datetime
 from be.server.context import dao, group_members, user_socket_connections
-from be.server.http.misc import verify_request, generate_json_response
+from be.server.http.misc import verify_request, generate_json_response, extract_timestamp_args
 
 
 @verify_request
@@ -15,11 +15,8 @@ async def handle_get_chat_group(request):
     chat_group_id = request.match_info.get("group-id", "")
     if not chat_group_id:
         return generate_json_response(False, "Chat group is not given")
-    if "until" not in request_body:
-        until = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    else:
-        until = request_body["until"]
-    group_chat_messages = dao.get_human_chat_messages(False, chat_group_id, until, 100)
+    timestamp, before = extract_timestamp_args(request_body)
+    group_chat_messages = dao.get_human_chat_messages(False, chat_group_id, timestamp, before, 100)
     return generate_json_response(True, group_chat_messages)
 
 

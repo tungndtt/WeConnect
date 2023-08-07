@@ -21,9 +21,8 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 
 4. Enter bot-chat:
 
-- Get botchat messages `GET /chat_bot {"header": {"authentication": <token>}}`
-- Return historic messages with bot (limit: 100 recent messages) `GET /chat-bot {"header": {"authentication": <token>}, "data": {}}`
-- Scrolling-query older messages (limit: 100 older messages) `GET /chat-bot {"header": {"authentication": <token>}, "data": {"until": date-str}}`
+- If botchat messages weren't fetched, send init request `GET /chat_bot {"header": {"authentication": <token>}, "data": {"timestamp": seesionStorage.get("bot")}}`
+- Scrolling-query older messages (limit: 100 older messages) `GET /chat_bot {"header": {"authentication": <token>}, "data": {"timestamp": date-str, "before": True}}`
 
 5. Message with bot:
 
@@ -37,8 +36,9 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 
 7. Enter chat room:
 
-- Send `GET /chat_rooms/{room-id} {"header": {"authentication": <token>}}`
+- If chat room messages weren't fetched, send init request `GET /chat_rooms/{room-id} {"header": {"authentication": <token>}, "data": {"timestamp": seesionStorage.get("room-{room-id}")}}`
 - Update the read status of notification `PUT /notifications {"header": {"authentication": <token>}, "data": {"chat_room_id": int}}`
+- Scrolling-query older messages (limit: 100 older messages) `GET /chat_rooms/{room-id} {"header": {"authentication": <token>}, "data": {"timestamp": date-str, "before": True}}`
 
 8. Leave chat room:
 
@@ -55,13 +55,14 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 
 11. Enter chat group:
 
-- Get group chat messages `GET /chat_groups/{group-id} {"header": {"authentication": <token>}}`
+- If group chat messages weren't fetched, send init request `GET /chat_groups/{group-id} {"header": {"authentication": <token>}, "data": {"timestamp": seesionStorage.get("group-{group-id}"), "is_enter": True}}`. Otherwise, fetch messages since last visited timestamp `GET /chat_groups/{group-id} {"header": {"authentication": <token>}, "data": {"timestamp": <last-visit-timestamp>, "is_enter": True}}`
 - Notify all users currently in the chat group `SOCKET {"chat_type": "group", "message": str}`
 - Get all group member general information `GET /users/group/{group-id} {"header": {"authentication": <token>}}`
+- Scrolling-query older messages (limit: 100 older messages) `GET /chat_groups/{group-id} {"header": {"authentication": <token>}, "data": {"timestamp": date-str, "before": True}}`
 
 12. Leave chat group:
 
-- Notify all users currently in the chat group `SOCKET {"chat_type": "group", "message": str}`
+- Notify all users currently in the chat group `SOCKET {"chat_type": "group", "message": str, "is_enter": False}`
 
 13. Message in chat group:
 

@@ -81,18 +81,19 @@ class Database:
         self._cursor.execute("SELECT id FROM chat_rooms WHERE user_1 = ? OR user_2 = ?", (user_id, user_id))
         return self._cursor.fetchall()
 
-    def _get_chat_messages(self, table_name: str, until: str, result_limit: int) -> list[Any]:
+    def _get_chat_messages(self, table_name: str, timestamp: str, before: bool, result_limit: int) -> list[Any]:
+        compare_op = "<=" if before else ">="
         self._cursor.execute(
-            f"SELECT * FROM {table_name} WHERE timestamp <= ? ORDER BY timestamp DESC", (until)
+            f"SELECT * FROM {table_name} WHERE timestamp {compare_op} ? ORDER BY timestamp DESC", timestamp
         )
         return self._cursor.fetchmany(result_limit)
 
-    def get_human_chat_messages(self, is_room: bool, chat_id: int, until: str, result_limit: int) -> list[Any]:
+    def get_human_chat_messages(self, is_room: bool, chat_id: int, timestamp: str, before: bool, result_limit: int) -> list[Any]:
         chat_type = "room" if is_room else "group"
-        return self._get_chat_messages(f"chat_{chat_type}_{chat_id}", until, result_limit)
+        return self._get_chat_messages(f"chat_{chat_type}_{chat_id}", timestamp, before, result_limit)
     
-    def get_bot_chat_messages(self, user_id: int, until: str, result_limit: int) -> list[Any]:
-        return self._get_chat_messages(f"user_{user_id}_bot_chat", until, result_limit)
+    def get_bot_chat_messages(self, user_id: int, timestamp: str, before: bool, result_limit: int) -> list[Any]:
+        return self._get_chat_messages(f"user_{user_id}_bot_chat", timestamp, before, result_limit)
     
     def get_notifications(self, user_id: int) -> list[Any]:
         self._cursor.execute(f"SELECT * FROM user_{user_id}_notifications")
