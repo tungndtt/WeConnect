@@ -1,14 +1,13 @@
 from aiohttp import web
 import asyncio
-from be.jwt.jwt import verify_token
-from be.server.context import register_connection, deregister_connection
+from be.server.context import jwt, register_connection, deregister_connection
 from be.server.socket.bot_chat import handle_bot_chat
 from be.server.socket.human_chat import handle_room_chat, handle_group_chat
 
 
-def _verify_request(request) -> None:
+def __verify_request(request) -> None:
     token = request["token"]
-    is_valid, payload = verify_token(token)
+    is_valid, payload = jwt().verify_token(token)
     if not is_valid:
         raise Exception("Invalid expired token")
     request["user_id"] = payload["user_id"]
@@ -21,12 +20,12 @@ async def handle_socket(socket_request):
     try:
         # Init the socket connection corresponding to given user_id
         request = await user_socket_connection.receive_json()
-        _verify_request(request)
+        __verify_request(request)
         user_id = request["user_id"]
         register_connection(user_id, user_socket_connection)
         while True:
             request = await user_socket_connection.receive_json()
-            _verify_request(request)
+            __verify_request(request)
             chat_type = request["chat_type"]
             if chat_type == "bot":
                 await handle_bot_chat(request)

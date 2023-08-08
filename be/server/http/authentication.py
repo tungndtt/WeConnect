@@ -1,6 +1,4 @@
-import os
-from be.jwt.jwt import generate_token, verify_token
-from be.server.context import dao, deregister_connection
+from be.server.context import dao, jwt, deregister_connection, broadcast_all_users
 from be.server.http.misc import generate_json_response
 
 
@@ -9,10 +7,15 @@ async def handle_login(request):
         payload = await request.json()
         email = payload["email"] if "email" in payload else ""
         password = payload["password"] if "password" in payload else ""
-        user_id = dao.get_user(email, password)
+        user_id = dao().get_user(email, password)
         if user_id == -1:
             return generate_json_response(False, "Invalid authentication")
-        token = generate_token({"user_id": user_id}, 120)
+        token = jwt().generate_token({"user_id": user_id}, 120)
+        await broadcast_all_users({
+            "type": "user_activity", 
+            "user_id": user_id,
+            "action": 0,
+        })
         return generate_json_response(True, token)
     except Exception as error:
         print("[Login] Cannot parse the payload " + error)
@@ -21,7 +24,13 @@ async def handle_login(request):
 
 async def handle_logout(request):
     token = request.headers.get("Authorization", "")
-    _, payload = verify_token(token)
+    _, payload = jwt().verify_token(token)
     if payload is not None:
-        deregister_connection(payload["user_id"])
+        user_id = payload["user_id"]
+        deregister_connection(user_id)
+        await broadcast_all_users({
+            "type": "user_activity", 
+            "user_id": user_id,
+            "action": 1,
+        })
     return generate_json_response(True, None)

@@ -1,25 +1,25 @@
 import openai
 import os
 import time
-from be.server.context import user_socket_connections, botchat_messages, dao
+from be.server.context import dao, get_botchat_messages, unicast_user
 
 
-_message_limit = int(os.environ.get("MESSAGE_LIMIT", 10))
-_openai_api_key = os.environ.get("OPENAI_API_KEY")
-if _openai_api_key is None:
+__message_limit = int(os.environ.get("MESSAGE_LIMIT", 10))
+__openai_api_key = os.environ.get("OPENAI_API_KEY")
+if __openai_api_key is None:
     print("[Bot Chat] No API key to access ChatGPT api")
     quit()
-openai.api_key = _openai_api_key
+openai.api_key = __openai_api_key
 
 
-async def handle_bot_chat(request) -> str:
+async def handle_bot_chat(request) -> None:
     user_id = request["user_id"]
     message = request["message"]
-    messages = botchat_messages[user_id]
+    messages = get_botchat_messages(user_id)
     messages.append({"role": "user", "content": message})
     #TODO: check the insert status
-    message_timestamp = dao.register_new_message_with_bot(user_id, True, message)
-    if len(messages) > _message_limit:
+    message_timestamp = dao().register_new_message_with_bot(user_id, True, message)
+    if len(messages) > __message_limit:
         messages = messages[2:]
     while True:
         try:
@@ -34,15 +34,15 @@ async def handle_bot_chat(request) -> str:
             time.sleep(4)
     messages.append({"role": "assistant", "content": response})
     #TODO: check the insert status
-    response_timestamp = dao.register_new_message_with_bot(user_id, False, response)
-    user_socket_connection = user_socket_connections[user_id]
-    await user_socket_connection.send_json({
-        "chat_type": "bot", 
+    response_timestamp = dao().register_new_message_with_bot(user_id, False, response)
+    message = {
+        "type": "bot_chat_message", 
         "messages": [
             { "is_user": True, "message": message, "timestamp": message_timestamp},
             { "is_user": False, "message": response, "timestamp": response_timestamp},
         ]
-    })
+    }
+    await unicast_user(user_id, message)
     
     
 

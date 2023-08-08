@@ -1,7 +1,6 @@
 from aiohttp import web
 from datetime import datetime
-from be.jwt.jwt import verify_token
-from be.server.context import deregister_connection
+from be.server.context import jwt, deregister_connection
 
 
 async def verify_request(handler):
@@ -9,7 +8,7 @@ async def verify_request(handler):
         token = request.headers.get("Authorization", "")
         if not token:
             return web.json_response({"status": False, "data": "Invalid access token"})
-        is_valid, payload = verify_token(token)
+        is_valid, payload = jwt().verify_token(token)
         if payload is None or "user_id" not in payload:
             return web.json_response({"status": False, "data": "Invalid access token"})
         user_id = payload["user_id"]
