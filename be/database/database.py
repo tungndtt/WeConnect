@@ -45,9 +45,10 @@ class Database:
         except Exception as error:
             print("[Database]: Cannot setup the database tables: " + error)
             self.__connection.rollback()
+            self.__close()
             quit()
 
-    def close(self) -> None:
+    def __close(self) -> None:
         self.__cursor.close()
         self.__connection.close()
     
@@ -55,13 +56,13 @@ class Database:
         self.__cursor("SELECT * FROM users WHERE email = ?", (email))
         return self.__cursor.fetchone() is not None
     
-    def get_user(self, email: str, password: str) -> int:
+    def get_user_id(self, email: str, password: str) -> Optional[int]:
         self.__cursor.execute("SELECT id FROM users WHERE email = ? AND password = ?", (email, password))
         user = self.__cursor.fetchone()
         if user is not None:
             return user[0]
         else:
-            return -1
+            return None
     
     def get_all_users(self) -> list[Any]:
         self.__cursor.execute("SELECT id, first_name, last_name FROM users")
@@ -74,11 +75,14 @@ class Database:
         return self.__cursor.fetchall()
 
     def get_chat_groups(self) -> list[int]:
-        self.__cursor.execute("SELECT id FROM chat_groups")
+        self.__cursor.execute("SELECT * FROM chat_groups")
         return self.__cursor.fetchall()
     
     def get_chat_rooms(self, user_id: int) -> list[Any]:
-        self.__cursor.execute("SELECT id FROM chat_rooms WHERE user_1 = ? OR user_2 = ?", (user_id, user_id))
+        self.__cursor.execute(
+            "SELECT id, last_message_timestamp FROM chat_rooms WHERE user_1 = ? OR user_2 = ? ORDER BY last_message_timestamp DESC", 
+            (user_id, user_id)
+        )
         return self.__cursor.fetchall()
 
     def __get_chat_messages(self, table_name: str, timestamp: str, before: bool, result_limit: int) -> list[Any]:
@@ -99,7 +103,7 @@ class Database:
         self.__cursor.execute(f"SELECT * FROM user_{user_id}_notifications")
         return self.__cursor.fetchall()
 
-    def register_new_user(self, email: str, password: str, first_name: str, last_name: str) -> int:
+    def register_new_user(self, email: str, password: str, first_name: str, last_name: str) -> Optional[int]:
         try:
             self.__cursor.execute(
                 "INSERT INTO users (email, password, first_name, last_name) VALUES (?, ?, ?, ?)", 
@@ -133,7 +137,7 @@ class Database:
         except Exception as error:
             print("[Database]: Cannot register new user: " + error)
             self.__connection.rollback()
-            return False
+            return None
     
     def register_new_chat_room(self, sender_id: int, receiver_id: int) -> Optional[int]:
         try:
@@ -161,7 +165,7 @@ class Database:
             self.__connection.rollback()
             return None
 
-    def register_new_chat_group(self, chat_group_name: str, creator_id: int) -> bool:
+    def register_new_chat_group(self, chat_group_name: str, creator_id: int) -> Optional[int]:
         try:
             self.__cursor.execute(
                 "INSERT INTO chat_groups (name, owner_id) VALUES (?)", (chat_group_name, creator_id)
@@ -179,13 +183,13 @@ class Database:
                 '''
             )
             self.__connection.commit()
-            return True
+            return chat_group_id
         except Exception as error:
             print("[Database]: Cannot register new chat group: " + error)
             self.__connection.rollback()
-            return False
+            return None
     
-    def register_new_message_with_bot(self, user_id: int, is_user: bool, message: str) -> str:
+    def register_new_message_with_bot(self, user_id: int, is_user: bool, message: str) -> Optional[str]:
         try:
             current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             self.__cursor.execute(
@@ -197,9 +201,9 @@ class Database:
         except Exception as error:
             print("[Database]: Cannot register new message in bot chat: " + error)
             self.__connection.rollback()
-            return ""
+            return None
     
-    def register_new_message_in_group(self, sender_id: int, chat_group_id: int, message: str) -> str:
+    def register_new_message_in_group(self, sender_id: int, chat_group_id: int, message: str) -> Optional[str]:
         try:
             current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             self.__cursor.execute(
@@ -211,9 +215,9 @@ class Database:
         except Exception as error:
             print("[Database]: Cannot register new message in group chat: " + error)
             self.__connection.rollback()
-            return ""
+            return None
 
-    def register_new_message_in_room(self, sender_id: int, receiver_id: int, chat_room_id: int, message: str) -> str:
+    def register_new_message_in_room(self, sender_id: int, receiver_id: int, chat_room_id: int, message: str) -> Optional[str]:
         try:
             # register the message
             current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
@@ -242,7 +246,7 @@ class Database:
         except Exception as error:
             print("[Database]: Cannot register new message in chat room: " + error)
             self.__connection.rollback()
-            return ""
+            return None
 
     def update_user_information(
         self, user_id: int, first_name: Optional[str], last_name: Optional[str], password: Optional[str]

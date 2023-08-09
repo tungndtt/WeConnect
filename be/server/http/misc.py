@@ -21,7 +21,7 @@ async def verify_request(handler):
 
 
 def generate_json_response(status, response):
-    return web.json_response({"status": status, "data": response})
+    return web.json_response(data={"data": response}, status=200 if status else 400)
 
 
 def extract_timestamp_args(request_body):

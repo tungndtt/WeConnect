@@ -1,5 +1,5 @@
 from be.server.http.misc import verify_request, generate_json_response
-from be.server.context import dao, get_group_members
+from be.server.context import dao, get_group_members, broadcast_all_users
 
 
 @verify_request
@@ -20,18 +20,26 @@ async def handle_get_users_in_group(request):
 
 @verify_request
 async def handle_get_user_profile(request):
-    user_information = dao().get_users_information([request.user_id], True)[0]
-    return generate_json_response(True, user_information)
+    users_information = dao().get_users_information([request.user_id], True)
+    if len(users_information) == 1:
+        return generate_json_response(True, users_information[0])
+    else:
+        return generate_json_response(False, None)
 
 
 @verify_request
 async def handle_update_user(request):
     request_body = await request.json()
     args = []
-    for field in ["first_name", "last_name", "password"]:
+    for field in ["user_id", "first_name", "last_name", "password"]:
         if field in request_body:
             args.append(request_body[field])
         else:
             args.append(None)
     status = dao().update_user_information(*args)
+    if status:
+        await broadcast_all_users({
+            "type": "user_update", "user_id": args[0],
+            "first_name": args[1], "last_name": args[2]
+        })
     return generate_json_response(status, None)

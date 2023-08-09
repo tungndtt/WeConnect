@@ -7,14 +7,14 @@ async def handle_login(request):
         payload = await request.json()
         email = payload["email"] if "email" in payload else ""
         password = payload["password"] if "password" in payload else ""
-        user_id = dao().get_user(email, password)
-        if user_id == -1:
+        user_id = dao().get_user_id(email, password)
+        if user_id is None:
             return generate_json_response(False, "Invalid authentication")
         token = jwt().generate_token({"user_id": user_id}, 120)
         await broadcast_all_users({
             "type": "user_activity", 
             "user_id": user_id,
-            "action": 0,
+            "login": True,
         })
         return generate_json_response(True, token)
     except Exception as error:
@@ -31,6 +31,6 @@ async def handle_logout(request):
         await broadcast_all_users({
             "type": "user_activity", 
             "user_id": user_id,
-            "action": 1,
+            "login": False,
         })
     return generate_json_response(True, None)

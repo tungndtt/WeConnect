@@ -6,7 +6,7 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 
 - Send confirmation link to email `POST /register {"email": str, "password": str, "first_name": str, "last_name": str}`
 - Enter the link to create the account `GET /register/<registration-token>`
-- Notify other users `SOCKET {"type": "user_activity", "message": str, "action": 2}`
+- Notify all online users `SOCKET {"type": "user_update", "user_id": number, "first_name": str, "last_name": str}`
 
 2. Login:
 
@@ -15,12 +15,12 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 - Send init request `SOCKET {"token": <token>}`
 - Get all notifications `GET /notifications {"header": {"authentication": <token>}}`
 - Get all users `GET /users {"header": {"authentication": <token>}}`
-- Notify other users `SOCKET {"type": "user_activity", "message": str, "action": 0}`
+- Notify all online users `SOCKET {"type": "user_activity", "user_id": number, "login": True}`
 
 3. Logout:
 
 - Send logout request `GET /logout {"header": {"authentication": <token>}}`
-- Notify other users `SOCKET {"type": "user_activity", "message": str, "action": 1}`
+- Notify all online users `SOCKET {"type": "user_activity", "user_id": number, "login": False}`
 
 4. Enter bot-chat:
 
@@ -76,11 +76,13 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 
 14. Create a chat group:
 
-- Send create request `POST /chat_groups {"header": {"authentication": <token>}, "data": {"chat_group_name": str, "author_id": int}}`
+- Send create request `POST /chat_groups {"header": {"authentication": <token>}, "data": {"name": str}}`
+- Notify all online users `SOCKET {"type": "group_chat_update", "chat_group_id": number, "name": str, "owner_id": number}`
 
 15. Update a chat group:
 
-- Send update request `PUT /chat_groups {"header": {"authentication": <token>}, "data": {"chat_group_name": int}}`
+- Send update request `PUT /chat_groups {"header": {"authentication": <token>}, "data": {"name": int}}`
+- Notify all online users `SOCKET {"type": "group_chat_update", "chat_group_id": number, "name": str, "owner_id": number}`
 
 16. Inspect profile:
 
@@ -89,3 +91,4 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 17. Update profile:
 
 - Get user private information `PUT /users/profile {"header": {"authentication": <token>}, "data": {"first_name": Optional[str], "last_name": Optional[str], "password": Optional[str]}}`
+- Notify all online users `SOCKET {"type": "user_update", "user_id": number, "first_name": str, "last_name": str}`

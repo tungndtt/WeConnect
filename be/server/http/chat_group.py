@@ -1,4 +1,4 @@
-from be.server.context import dao, get_group_members, multicast_chat_group
+from be.server.context import dao, get_group_members, multicast_chat_group, broadcast_all_users
 from be.server.http.misc import verify_request, generate_json_response, extract_timestamp_args
 
 
@@ -51,8 +51,17 @@ async def handle_register_chat_group(request):
     request_body = await request.json()
     if "name" not in request_body:
         return generate_json_response(False, "Cannot create chat group without name")
-    status = dao().register_new_chat_group(request_body["name"], request.user_id)
-    return generate_json_response(status, None)
+    group_name = request_body["name"]
+    owner_id = request.user_id
+    chat_group_id = dao().register_new_chat_group(group_name, owner_id)
+    if chat_group_id is None:
+        return generate_json_response(False, None)
+    else:
+        await broadcast_all_users({
+            "type": "group_chat_update", "chat_group_id": chat_group_id,
+            "name": group_name, "owner_id": owner_id
+        })
+        return generate_json_response(True, None)
 
 
 @verify_request
@@ -62,5 +71,12 @@ async def handle_update_chat_group_name(request):
         return generate_json_response(
             False, "Cannot update chat group name without specified fields 'group_id' or 'name'"
         )
-    status = dao().update_chat_group_name(request_body["group_id"], request_body["name"])
+    chat_group_id = request_body["group_id"]
+    group_name = request_body["name"]
+    status = dao().update_chat_group_name(chat_group_id, group_name)
+    if status:
+        await broadcast_all_users({
+            "type": "group_chat_update", "chat_group_id": chat_group_id,
+            "name": group_name, "owner_id": request.user_id
+        })
     return generate_json_response(status, None)

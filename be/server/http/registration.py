@@ -16,11 +16,8 @@ async def handle_registration_confirm(request):
     if is_valid:
         new_user_id = dao().register_new_user(**payload)
         await broadcast_all_users({
-            "type": "user_activity", 
-            "user_id": new_user_id, 
-            "first_name": payload["first_name"], 
-            "last_name": payload["last_name"], 
-            "action": 2,
+            "type": "user_update", "user_id": new_user_id,
+            "first_name": payload["first_name"], "last_name": payload["last_name"], 
         })
         return generate_json_response(True, None)
     elif payload is not None:
@@ -37,8 +34,10 @@ async def handle_register(request):
             data[field] = payload[field]
         else:
             return generate_json_response(False, f"'{field}' cannot be empty")
+    email = payload["email"]
+    if dao().check_user_existence(email):
+        return generate_json_response(False, f"There is already account associated with given email '{email}'")
     registration_token = jwt().generate_token(data, __registration_duration)
-    recipients = payload["email"]
     subject = "WeConnect - Registration Confirmation"
     content = f"""
     <html>
@@ -49,5 +48,5 @@ async def handle_register(request):
         </body>
     </html>
     """
-    status = __email_handler.send_email(recipients, subject, content)
+    status = __email_handler.send_email(email, subject, content)
     return generate_json_response(status, None)
