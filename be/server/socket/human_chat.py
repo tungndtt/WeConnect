@@ -1,4 +1,4 @@
-from be.server.context import dao, unicast_user, multicast_chat_group
+from be.server.context import dao, unicast_user
 from be.server.socket.misc import check_request_parameters
 
 
@@ -36,7 +36,7 @@ async def handle_room_chat(request) -> None:
         )
         return
     message_timestamp = dao().register_new_message_in_room(
-        sender_id, receiver_id, chat_room_id, message
+        sender_id, chat_room_id, message
     )
     if message_timestamp is None:
         await unicast_user(
@@ -62,14 +62,14 @@ async def handle_room_chat(request) -> None:
 
 
 async def handle_group_chat(request) -> None:
-    user_id = request["user_id"]
+    sender_id = request["user_id"]
     if check_request_parameters(request, "message", "chat_group_id"):
         await unicast_user(
-            user_id,
+            sender_id,
             {
                 "type": "group_chat_message",
-                "user_id": user_id,
-                "chat_room_id": None, 
+                "user_id": sender_id,
+                "chat_group_id": None, 
                 "message": None, 
                 "timestamp": None,
             }
@@ -78,15 +78,15 @@ async def handle_group_chat(request) -> None:
     message = request["message"]
     chat_group_id = request["chat_group_id"]
     message_timestamp = dao().register_new_message_in_group(
-        user_id, chat_group_id, message
+        sender_id, chat_group_id, message
     )
     if message_timestamp is None:
         await unicast_user(
-            user_id,
+            sender_id,
             {
                 "type": "group_chat_message",
-                "user_id": user_id,
-                "chat_room_id": None, 
+                "user_id": sender_id,
+                "chat_group_id": None, 
                 "message": None, 
                 "timestamp": None,
             }
@@ -94,10 +94,12 @@ async def handle_group_chat(request) -> None:
         return
     group_message = {
         "type": "group_chat_message",
-        "user_id": user_id, 
+        "user_id": sender_id, 
         "chat_group_id": chat_group_id, 
         "message": message, 
         "timestamp": message_timestamp
     }
-    await multicast_chat_group(chat_group_id, group_message)
+    member_ids = dao().get_group_member_ids(chat_group_id)
+    for member_id in member_ids:
+        await unicast_user(member_id, group_message)
     
