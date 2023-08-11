@@ -98,13 +98,16 @@ class Database:
     def get_chat_rooms(self, user_id: int) -> list[int]:
         self.__cursor.execute(
             """
-            SELECT id
+            SELECT *
             FROM chat_rooms
             WHERE user_1 = ? OR user_2 = ?
             """, 
             (user_id, user_id)
         )
-        return [row[0] for row in self.__cursor.fetchall()]
+        return [
+            (row[0], row[1] if row[1] != user_id else row[2]) 
+            for row in self.__cursor.fetchall()
+        ]
 
     def __get_chat_messages(
         self, 
@@ -113,7 +116,7 @@ class Database:
         before: bool, 
         result_limit: int
     ) -> list[Any]:
-        compare_op = "<=" if before else ">="
+        compare_op = "<" if before else ">="
         self.__cursor.execute(
             f"""
             SELECT * FROM {table_name} 
@@ -201,7 +204,7 @@ class Database:
             self.__cursor.execute(
                 f"""
                 CREATE TABLE user_{user_id}_bot_chat (
-                    is_user BOOLEAN NOT NULL,
+                    user_id INTEGER NOT NULL,
                     message TEXT NOT NULL,
                     timestamp TIMESTAMP NOT NULL,
                 )
@@ -314,10 +317,14 @@ class Database:
             self.__cursor.execute(
                 f"""
                 INSERT INTO user_{user_id}_bot_chat
-                (is_user, message, timestamp)
+                (user_id, message, timestamp)
                 VALUES (?, ?, ?)
                 """, 
-                (is_user, message, current_timestamp)
+                (
+                    user_id if is_user else 0,
+                    message, 
+                    current_timestamp
+                )
             )
             self.__connection.commit()
             return current_timestamp

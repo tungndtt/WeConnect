@@ -35,7 +35,7 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 2. Message:
 
 - Send user message `SOCKET {"token": <token>, "chat_type": "bot", "message": str}`
-- Receive bot response `SOCKET {"type": "bot_chat_message", "messages": [ { "is_user": True, "message": str, "timestamp": date-str}, { "is_user": False, "message": str, "timestamp": date-str}]}`
+- Receive bot response `SOCKET {"type": "bot_chat_message", "messages": [ { "user_id": int, "message": str, "timestamp": date-str}, { "user_id": 0, "message": str, "timestamp": date-str}]}`
 
 ### Human-chat:
 
@@ -49,7 +49,7 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 2. Message:
 
 - Send message `SOCKET {"token": <token>, "chat_type": "room", "other_user_id": int, "message": str}`
-- Notify other user `SOCKET {"type": "room_chat_message", "user_id": int, "chat_room_id": int, "message": str, "timestamp": date-str}`
+- Notify other user `SOCKET {"type": "room_chat_message", "user_id": int, "other_user_id": int, "chat_room_id": int, "message": str, "timestamp": date-str}`
 
 #### Chat group:
 

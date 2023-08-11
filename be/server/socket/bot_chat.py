@@ -15,15 +15,13 @@ openai.api_key = __openai_api_key
 
 async def handle_bot_chat(request) -> None:
     user_id = request["user_id"]
-    if check_request_parameters(request, "message"):
-        await unicast_user(user_id, {"type": "bot_chat_message", "messages": None})
+    if not check_request_parameters(request, "message"):
         return
     message = request["message"]
     messages = get_botchat_messages(user_id)
     messages.append({"role": "user", "content": message})
     message_timestamp = dao().register_new_message_with_bot(user_id, True, message)
     if message_timestamp is None:
-        await unicast_user(user_id, {"type": "bot_chat_message", "messages": None})
         return
     if len(messages) > __message_limit:
         messages = messages[2:]
@@ -41,8 +39,8 @@ async def handle_bot_chat(request) -> None:
     messages.append({"role": "assistant", "content": response})
     response_timestamp = dao().register_new_message_with_bot(user_id, False, response)
     messages = [
-        { "is_user": True, "message": message, "timestamp": message_timestamp},
-        { "is_user": False, "message": response, "timestamp": response_timestamp},
+        { "user_id": user_id, "message": message, "timestamp": message_timestamp},
+        { "user_id": 0, "message": response, "timestamp": response_timestamp},
     ] if response_timestamp is not None else None
     message = {"type": "bot_chat_message", "messages": messages}
     await unicast_user(user_id, message)
