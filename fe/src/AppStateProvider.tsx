@@ -13,6 +13,7 @@ interface User {
   lastName: string;
   email?: string;
   password?: string;
+  isOnline?: boolean;
 }
 
 interface Notification {
@@ -37,7 +38,7 @@ interface Message {
 interface Chat {
   until?: Date;
   messages: Message[] | undefined;
-  pendingMessages: string[];
+  pendingMessages: [number, string][];
 }
 
 interface ChatGroup extends Chat {
@@ -100,7 +101,7 @@ export const AppStateContext = createContext<AppState>({
   chatBot: {
     until: undefined,
     messages: undefined,
-    pendingMessages: [] as string[],
+    pendingMessages: [] as [number, string][],
   },
 
   updateProfile: (_update: User) => new Promise<any>(() => {}),
@@ -146,8 +147,8 @@ export function AppStateProvider(props: { children: ReactNode }) {
   const [chatBot, setChatBot] = useState({
     until: undefined,
     messages: undefined,
-    pendingMessages: [] as string[],
-  });
+    pendingMessages: [],
+  } as Chat);
 
   const sendRequest = (
     method: "GET" | "POST" | "PUT" | "DELETE",
@@ -229,17 +230,21 @@ export function AppStateProvider(props: { children: ReactNode }) {
             email: fprofile[3],
             password: fprofile[4],
           });
-          setUsers(
-            new Map(
-              (fusers as any[]).map((fuser: any) => [
-                fuser[0],
-                {
-                  firstName: fuser[0],
-                  lastName: fuser[1],
-                },
-              ])
-            )
+          const _users = new Map(
+            (fusers["users"] as any[]).map((fuser: any) => [
+              fuser[0],
+              {
+                firstName: fuser[0],
+                lastName: fuser[1],
+                isOnline: false,
+              },
+            ])
           );
+          (fusers["online_user_ids"] as number[]).forEach(
+            (fonlineUserId: number) =>
+              (_users.get(fonlineUserId)!.isOnline = true)
+          );
+          setUsers(_users);
           setNotifications(
             (fnotifications as any[]).map((fnotification: any) => ({
               userId: fnotification[0],
@@ -296,8 +301,9 @@ export function AppStateProvider(props: { children: ReactNode }) {
       isRoom: boolean,
       data: any
     ) => {
-      const { user_id, message, timestamp } = data;
+      const { user_id, message, epoch, timestamp } = data;
       const messageTimestamp = new Date(timestamp);
+      let isChatModified = false;
       if (message) {
         if (!chat.messages) {
           chat.messages = [];
@@ -308,21 +314,28 @@ export function AppStateProvider(props: { children: ReactNode }) {
           message: message,
           timestamp: messageTimestamp,
         });
+        isChatModified = true;
       }
       if (profile!.id === user_id) {
-        chat.pendingMessages.splice(0, 1);
-        let isChatInNoti = false;
+        const index = chat.pendingMessages.findIndex(
+          ([_epoch, _]) => _epoch === epoch
+        );
+        if (index !== -1) {
+          chat.pendingMessages.splice(index, 1);
+          isChatModified = true;
+        }
+        let isChatInNotifications = false;
         for (let notification of notifications!) {
           if (
             notification.isRoom === isRoom &&
             notification.chatId === chatId
           ) {
             notification.isRead = false;
-            isChatInNoti = true;
+            isChatInNotifications = true;
             break;
           }
         }
-        if (!isChatInNoti) {
+        if (!isChatInNotifications) {
           notifications!.push({
             userId: user_id,
             chatId: chatId,
@@ -333,19 +346,52 @@ export function AppStateProvider(props: { children: ReactNode }) {
         }
         setNotifications([...notifications!]);
       }
-      return !message;
+      return isChatModified;
     };
 
     socketConnection.current?.addEventListener("message", (event) => {
       const type = event.data["type"];
       switch (type) {
         case "user_activity": {
+          const { user_id, login } = event.data;
+          const user = users.get(user_id)!;
+          user.isOnline = login;
+          setUsers(new Map(users));
           break;
         }
         case "user_update": {
+          const { user_id, first_name, last_name } = event.data;
+          let user = users.get(user_id);
+          if (!user) {
+            user = {
+              firstName: first_name,
+              lastName: last_name,
+            };
+            users.set(user_id, user);
+          } else {
+            user.firstName = first_name;
+            user.lastName = last_name;
+          }
+          setUsers(new Map(users));
           break;
         }
         case "group_chat_update": {
+          const { chat_group_id, name, owner_id } = event.data;
+          let chatGroup = chatGroups.get(chat_group_id);
+          if (!chatGroup) {
+            chatGroup = {
+              name: name,
+              ownerId: owner_id,
+              messages: undefined,
+              until: undefined,
+              pendingMessages: [],
+            };
+            chatGroups.set(chat_group_id, chatGroup);
+          } else {
+            chatGroup.name = name;
+            chatGroup.ownerId = owner_id;
+          }
+          setChatGroups(new Map(chatGroups));
           break;
         }
         case "group_chat_message": {
@@ -366,9 +412,18 @@ export function AppStateProvider(props: { children: ReactNode }) {
         case "room_chat_message": {
           const { user_id, other_user_id, chat_room_id } = event.data;
           const otherUserId = profile!.id === user_id ? other_user_id : user_id;
-          const chatRoom = chatRooms.get(otherUserId)!;
-          chatRoom.chatRoomId =
-            chatRoom.chatRoomId === 0 ? chat_room_id : chatRoom.chatRoomId;
+          let chatRoom = chatRooms.get(otherUserId);
+          if (!chatRoom) {
+            chatRoom = {
+              chatRoomId: chat_room_id,
+              messages: undefined,
+              until: undefined,
+              pendingMessages: [],
+            };
+            chatRooms.set(otherUserId, chatRoom);
+          } else if (chatRoom.chatRoomId === 0) {
+            chatRoom.chatRoomId = chat_room_id;
+          }
           if (
             handleIncomingMessageHumanChat(
               chatRoom,
@@ -382,6 +437,27 @@ export function AppStateProvider(props: { children: ReactNode }) {
           break;
         }
         case "bot_chat_message": {
+          const { messages, epoch } = event.data;
+          if (messages) {
+            const index = chatBot.pendingMessages.findIndex(
+              ([_epoch, _]) => _epoch === epoch
+            );
+            if (index !== -1) {
+              chatBot.pendingMessages.splice(index, 1);
+            }
+            if (!chatBot.until) {
+              chatBot.messages = [];
+              chatBot.until = new Date(messages[0]["timestamp"]);
+            }
+            (messages as any[]).forEach(({ user_id, message, timestamp }) =>
+              chatBot.messages?.push({
+                userId: user_id,
+                message: message,
+                timestamp: new Date(timestamp),
+              })
+            );
+            setChatBot({ ...chatBot });
+          }
           break;
         }
       }
@@ -416,13 +492,18 @@ export function AppStateProvider(props: { children: ReactNode }) {
         new Promise<any>(() => {}),
       sendMessage: (socketMessage: SocketMessage) => {
         if (token && socketMessage.message) {
+          const epoch = +new Date();
           socketConnection.current?.send(
-            JSON.stringify({ ...socketMessage, token: token })
+            JSON.stringify({
+              ...socketMessage,
+              token: token,
+              epoch: epoch,
+            })
           );
           switch (socketMessage.chatType) {
             case "group": {
               const chatGroup = chatGroups.get(socketMessage.chat_group_id!)!;
-              chatGroup.pendingMessages.push(socketMessage.message);
+              chatGroup.pendingMessages.push([epoch, socketMessage.message]);
               setChatGroups(new Map(chatGroups));
               break;
             }
@@ -437,12 +518,12 @@ export function AppStateProvider(props: { children: ReactNode }) {
                 };
                 chatRooms.set(socketMessage.other_user_id!, chatRoom);
               }
-              chatRoom.pendingMessages.push(socketMessage.message);
+              chatRoom.pendingMessages.push([epoch, socketMessage.message]);
               setChatRooms(new Map(chatRooms));
               break;
             }
             default: {
-              chatBot.pendingMessages.push(socketMessage.message);
+              chatBot.pendingMessages.push([epoch, socketMessage.message]);
               setChatBot({ ...chatBot });
             }
           }
