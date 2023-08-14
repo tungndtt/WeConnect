@@ -43,3 +43,7 @@ async def broadcast_all_users(message) -> None:
 def get_botchat_messages(user_id: int) -> list[str]:
     return __botchat_messages[user_id]
 
+
+def get_all_online_user_ids() -> list[int]:
+    return __user_socket_connections.keys()
+

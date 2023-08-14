@@ -15,9 +15,10 @@ openai.api_key = __openai_api_key
 
 async def handle_bot_chat(request) -> None:
     user_id = request["user_id"]
-    if not check_request_parameters(request, "message"):
+    if not check_request_parameters(request, "message", "epoch"):
         return
     message = request["message"]
+    epoch = request["epoch"]
     messages = get_botchat_messages(user_id)
     messages.append({"role": "user", "content": message})
     message_timestamp = dao().register_new_message_with_bot(user_id, True, message)
@@ -42,7 +43,7 @@ async def handle_bot_chat(request) -> None:
         { "user_id": user_id, "message": message, "timestamp": message_timestamp},
         { "user_id": 0, "message": response, "timestamp": response_timestamp},
     ] if response_timestamp is not None else None
-    message = {"type": "bot_chat_message", "messages": messages}
+    message = {"type": "bot_chat_message", "epoch": epoch, "messages": messages}
     await unicast_user(user_id, message)
     
     

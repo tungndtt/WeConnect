@@ -34,8 +34,8 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 
 2. Message:
 
-- Send user message `SOCKET {"token": <token>, "chat_type": "bot", "message": str}`
-- Receive bot response `SOCKET {"type": "bot_chat_message", "messages": [ { "user_id": int, "message": str, "timestamp": date-str}, { "user_id": 0, "message": str, "timestamp": date-str}]}`
+- Send user message `SOCKET {"token": <token>, "chat_type": "bot", "message": str, "epoch": int}`
+- Receive bot response `SOCKET {"type": "bot_chat_message", "epoch": int, "message": [ { "user_id": int, "messages": str, "timestamp": date-str}, { "user_id": 0, "message": str, "timestamp": date-str}]}`
 
 ### Human-chat:
 
@@ -48,8 +48,8 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 
 2. Message:
 
-- Send message `SOCKET {"token": <token>, "chat_type": "room", "other_user_id": int, "message": str}`
-- Notify other user `SOCKET {"type": "room_chat_message", "user_id": int, "other_user_id": int, "chat_room_id": int, "message": str, "timestamp": date-str}`
+- Send message `SOCKET {"token": <token>, "chat_type": "room", "other_user_id": int, "message": str, "epoch": int}`
+- Notify other user `SOCKET {"type": "room_chat_message", "user_id": int, "other_user_id": int, "chat_room_id": int, "message": str, "epoch": int, "timestamp": date-str}`
 
 #### Chat group:
 
@@ -60,8 +60,8 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 
 2. Message:
 
-- Send message `SOCKET {"token": <token>, "chat_type": "group", "chat_group_id": int, "message": str}`
-- Notify all users in the chat group `SOCKET {"type": "group_chat_message", "user_id": int, "chat_group_id": int, "message": str, "timestamp": date-str}`
+- Send message `SOCKET {"token": <token>, "chat_type": "group", "chat_group_id": int, "message": str, "epoch": int}`
+- Notify all users in the chat group `SOCKET {"type": "group_chat_message", "user_id": int, "chat_group_id": int, "message": str, "epoch": int, "timestamp": date-str}`
 
 **Note:** Update the chat notification `PUT /notifications {"header": {"authentication": <token>}, "data": {"chat_id": int, "is_room": True}}` on entering/leaving in human-chat
 

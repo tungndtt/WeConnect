@@ -1,11 +1,12 @@
 from be.server.http.misc import verify_request, generate_json_response
-from be.server.context import dao, broadcast_all_users
+from be.server.context import dao, get_all_online_user_ids, broadcast_all_users
 
 
 @verify_request
 async def handle_get_all_users(_):
     users = dao().get_all_users()
-    return generate_json_response(True, users)
+    online_user_ids = get_all_online_user_ids()
+    return generate_json_response(True, {"users": users, "online_user_ids": online_user_ids})
 
 
 @verify_request

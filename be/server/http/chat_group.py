@@ -55,7 +55,8 @@ async def handle_review_access_request(request):
                 "type": "group_chat_message",
                 "user_id": reviewer_id,
                 "chat_group_id": chat_group_id, 
-                "message": None, 
+                "message": None,
+                "epoch": None,
                 "timestamp": current_timestamp,
             }
         )
