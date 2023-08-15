@@ -430,8 +430,9 @@ class Database:
         self, 
         requester_id: int, 
         chat_group_id: int
-    ) -> bool:
+    ) -> Optional[str]:
         try:
+            current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             # insert group access request on non-existence
             self.__cursor.execute(
                 f"""
@@ -447,14 +448,14 @@ class Database:
                 (chat_group_id, timestamp)
                 VALUES (?, ?)
                 """,
-                (chat_group_id, datetime.now().strftime("%d/%m/%Y %H:%M:%S"))
+                (chat_group_id, current_timestamp)
             )
             self.__connection.commit()
-            return True
+            return current_timestamp
         except Exception as error:
             print("[Database]: Cannot register new access request in chat group: " + error)
             self.__connection.rollback()
-            return False
+            return None
         
     def __update_information(self, **args):
         try:
@@ -492,8 +493,8 @@ class Database:
     def update_chat_group(
         self, 
         chat_group_id: int, 
-        group_name: str, 
-        owner_id: int
+        group_name: Optional[str], 
+        owner_id: Optional[int]
     ) -> bool:
         return self.__update_information({
             "name": group_name, 

@@ -45,5 +45,5 @@ def get_botchat_messages(user_id: int) -> list[str]:
 
 
 def get_all_online_user_ids() -> list[int]:
-    return __user_socket_connections.keys()
+    return list(__user_socket_connections.keys())
 

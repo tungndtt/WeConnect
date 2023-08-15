@@ -7,21 +7,30 @@ async def verify_request(handler):
     async def verify(request):
         token = request.headers.get("Authorization", "")
         if not token:
-            return web.json_response({"status": False, "data": "Invalid access token"})
+            return web.json_response(
+                {"status": False, "data": "Invalid access token"},
+                status=400
+            )
         is_valid, payload = jwt().verify_token(token)
         if payload is None or "user_id" not in payload:
-            return web.json_response({"status": False, "data": "Invalid access token"})
+            return web.json_response(
+                {"status": False, "data": "Invalid access token"},
+                status=400
+            )
         user_id = payload["user_id"]
         if not is_valid:
             deregister_connection(user_id)
-            return web.json_response({"status": False, "data": "Expired access token"})
+            return web.json_response(
+                {"status": False, "data": "Expired access token"},
+                status=400
+            )
         request.user_id = user_id
         return handler(request)
     return verify
 
 
 def generate_json_response(status, response):
-    return web.json_response(data={"data": response}, status=200 if status else 400)
+    return web.json_response(data={"status": status, "data": response}, status=200)
 
 
 def extract_timestamp_args(request_body):

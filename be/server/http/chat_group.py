@@ -34,8 +34,8 @@ async def handle_register_access_request(request):
     if not chat_group_id:
         return generate_json_response(False, "Chat group must be specified")
     requester_id = request.user_id
-    status = dao().register_new_access_request(requester_id, chat_group_id)
-    return generate_json_response(status, None)
+    current_timestamp = dao().register_new_access_request(requester_id, chat_group_id)
+    return generate_json_response(current_timestamp is not None, current_timestamp)
 
 
 @verify_request
@@ -86,18 +86,19 @@ async def handle_register_chat_group(request):
 @verify_request
 async def handle_update_chat_group(request):
     request_body = await request.json()
-    if "name" not in request_body or "group_id" not in request_body:
+    if "name" not in request_body or "group_id" not in request_body or "owner_id" not in request_body:
         return generate_json_response(
-            False, "Cannot update chat group name without specified fields 'group_id' or 'name'"
+            False, "Cannot update chat group name without specified fields 'group_id', 'name', 'owner_id'"
         )
     chat_group_id = request_body["group_id"]
     group_name = request_body["name"]
-    status = dao().update_chat_group(chat_group_id, group_name)
+    owner_id = request_body["owner_id"]
+    status = dao().update_chat_group(chat_group_id, group_name, owner_id)
     if status:
         await broadcast_all_users({
             "type": "group_chat_update", 
             "chat_group_id": chat_group_id,
             "name": group_name, 
-            "owner_id": request.user_id
+            "owner_id": owner_id
         })
     return generate_json_response(status, None)
