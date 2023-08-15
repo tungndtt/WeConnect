@@ -51,6 +51,7 @@ interface ChatRoom extends Chat {
 }
 
 interface AppState {
+  token: string;
   profile: User | undefined;
   users: Map<number, User>;
   notifications: Notification[] | undefined;
@@ -59,25 +60,22 @@ interface AppState {
   chatRooms: Map<number, ChatRoom>;
   chatBot: Chat;
 
-  updateProfile: (update: User) => Promise<any>;
-  updateNotification: (chatId: number, isRoom: boolean) => Promise<any>;
-  registerChatGroup: (groupName: string) => Promise<any>;
-  updateChatGroup: (newGroupName?: string, newOwnerId?: number) => Promise<any>;
-  getChatGroupAccessRequests: (chatGroupId: number) => Promise<any>;
-  registerChatGroupAccessRequest: (chatGroupId: number) => Promise<any>;
+  updateProfile: (update: User) => Promise<void>;
+  updateNotification: (chatId: number, isRoom: boolean) => Promise<void>;
+  registerChatGroup: (groupName: string) => Promise<void>;
+  updateChatGroup: (
+    newGroupName?: string,
+    newOwnerId?: number
+  ) => Promise<void>;
+  registerChatGroupAccessRequest: (chatGroupId: number) => Promise<void>;
   reviewChatGroupAccessRequest: (
     chatGroupId: number,
-    requesterId: number
-  ) => Promise<any>;
-  getGroupChatMessages: (
-    chatGroupId: number,
-    pastScrolling: boolean
-  ) => Promise<any>;
-  getRoomChatMessages: (
-    chatRoomId: number,
-    pastScrolling: boolean
-  ) => Promise<any>;
-  getBotChatMessages: (pastScrolling: boolean) => Promise<any>;
+    requesterId: number,
+    acess: boolean
+  ) => Promise<void>;
+  getGroupChatMessages: (chatGroupId: number, before: boolean) => Promise<void>;
+  getRoomChatMessages: (chatRoomId: number, before: boolean) => Promise<void>;
+  getBotChatMessages: (before: boolean) => Promise<void>;
   sendMessage: (message: SocketMessage) => void;
   signIn: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<any>;
@@ -92,6 +90,7 @@ interface SocketMessage {
 }
 
 export const AppStateContext = createContext<AppState>({
+  token: "",
   profile: undefined,
   users: new Map<number, User>(),
   notifications: undefined,
@@ -104,22 +103,24 @@ export const AppStateContext = createContext<AppState>({
     pendingMessages: [] as [number, string][],
   },
 
-  updateProfile: (_update: User) => new Promise<any>(() => {}),
-  updateNotification: (_userId: number) => new Promise<any>(() => {}),
-  registerChatGroup: (_groupName: string) => new Promise<any>(() => {}),
+  updateProfile: (_update: User) => new Promise<void>(() => {}),
+  updateNotification: (_chatId: number, _isRoom: boolean) =>
+    new Promise<void>(() => {}),
+  registerChatGroup: (_groupName: string) => new Promise<void>(() => {}),
   updateChatGroup: (_newGroupName?: string, _newOwnerId?: number) =>
-    new Promise<any>(() => {}),
-  getChatGroupAccessRequests: (_chatGroupId: number) =>
-    new Promise<any>(() => {}),
+    new Promise<void>(() => {}),
   registerChatGroupAccessRequest: (_chatGroupId: number) =>
-    new Promise<any>(() => {}),
-  reviewChatGroupAccessRequest: (_chatGroupId: number, _requesterId: number) =>
-    new Promise<any>(() => {}),
-  getGroupChatMessages: (_chatGroupId: number, _pastScrolling: boolean) =>
-    new Promise<any>(() => {}),
-  getRoomChatMessages: (_chatRoomId: number, _pastScrolling: boolean) =>
-    new Promise<any>(() => {}),
-  getBotChatMessages: (_pastScrolling: boolean) => new Promise<any>(() => {}),
+    new Promise<void>(() => {}),
+  reviewChatGroupAccessRequest: (
+    _chatGroupId: number,
+    _requesterId: number,
+    _access: boolean
+  ) => new Promise<any>(() => {}),
+  getGroupChatMessages: (_chatGroupId: number, _before: boolean) =>
+    new Promise<void>(() => {}),
+  getRoomChatMessages: (_chatRoomId: number, _before: boolean) =>
+    new Promise<void>(() => {}),
+  getBotChatMessages: (_before: boolean) => new Promise<void>(() => {}),
   sendMessage: (_message: SocketMessage) => {},
   signIn: (_email: string, _password: string) => new Promise<any>(() => {}),
   signOut: () => new Promise<any>(() => {}),
@@ -130,7 +131,7 @@ const HOST = "127.0.0.1";
 const PORT = 2204;
 
 export function AppStateProvider(props: { children: ReactNode }) {
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(sessionStorage.getItem("token") || "");
   const socketConnection = useRef(undefined as WebSocket | undefined);
 
   const [profile, setProfile] = useState(undefined as User | undefined);
@@ -160,8 +161,13 @@ export function AppStateProvider(props: { children: ReactNode }) {
     let xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function () {
       if (this.readyState == 4) {
-        if (this.status < 400) onSucess(this.response);
-        else onFail(this.response);
+        if (this.status < 400) {
+          const { status, data } = this.response;
+          if (status) onSucess(data);
+          else onFail(data);
+        } else {
+          setToken("");
+        }
       }
     };
     xhttp.open(method, `http://${HOST}:${PORT}/http/${endpoint}`, true);
@@ -175,6 +181,11 @@ export function AppStateProvider(props: { children: ReactNode }) {
       const botChatTimestamp = new Date(
         sessionStorage.get("botchat_timestamp")
       );
+      setChatBot({
+        until: botChatTimestamp,
+        messages: undefined,
+        pendingMessages: [],
+      });
       const roomChatTimestamps = new Map<number, Date>();
       const groupChatTimestamps = new Map<number, Date>();
       for (let i = 0; i < sessionStorage.length; i++) {
@@ -230,7 +241,7 @@ export function AppStateProvider(props: { children: ReactNode }) {
             email: fprofile[3],
             password: fprofile[4],
           });
-          const _users = new Map(
+          const musers = new Map(
             (fusers["users"] as any[]).map((fuser: any) => [
               fuser[0],
               {
@@ -240,11 +251,10 @@ export function AppStateProvider(props: { children: ReactNode }) {
               },
             ])
           );
-          (fusers["online_user_ids"] as number[]).forEach(
-            (fonlineUserId: number) =>
-              (_users.get(fonlineUserId)!.isOnline = true)
-          );
-          setUsers(_users);
+          for (let fonlineUserId of fusers["online_user_ids"] as number[]) {
+            musers.get(fonlineUserId)!.isOnline = true;
+          }
+          setUsers(musers);
           setNotifications(
             (fnotifications as any[]).map((fnotification: any) => ({
               userId: fnotification[0],
@@ -291,39 +301,49 @@ export function AppStateProvider(props: { children: ReactNode }) {
       );
     } else {
       socketConnection.current = undefined;
+      sessionStorage.setItem("token", "");
     }
   }, [token]);
 
   const appState: AppState = useMemo(() => {
-    const handleIncomingMessageHumanChat = (
-      chat: Chat,
+    const updateChatMessages = (chat: Chat, data: any) => {
+      const messageEpoch = data["epoch"];
+      const messages = "messages" in data ? data["messages"] : [data];
+      let isModified = false;
+      if (profile!.id === messages[0]["user_id"]) {
+        const index = chatBot.pendingMessages.findIndex(
+          ([pendingEpoch, _]) => pendingEpoch === messageEpoch
+        );
+        if (index !== -1) {
+          chat.pendingMessages.splice(index, 1);
+          isModified = true;
+        }
+      }
+      if (!chat.until) {
+        chat.messages = [];
+        chat.until = new Date(messages[0]["timestamp"]);
+        isModified = true;
+      }
+      for (let { user_id, message, timestamp } of messages) {
+        if (message) {
+          chat.messages!.push({
+            userId: user_id,
+            message: message,
+            timestamp: new Date(timestamp),
+          });
+          isModified = true;
+        }
+      }
+      return isModified;
+    };
+
+    const updateNotifications = (
       chatId: number,
       isRoom: boolean,
       data: any
     ) => {
-      const { user_id, message, epoch, timestamp } = data;
-      const messageTimestamp = new Date(timestamp);
-      let isChatModified = false;
-      if (message) {
-        if (!chat.messages) {
-          chat.messages = [];
-          chat.until = messageTimestamp;
-        }
-        chat.messages.push({
-          userId: user_id,
-          message: message,
-          timestamp: messageTimestamp,
-        });
-        isChatModified = true;
-      }
+      const { user_id, timestamp } = data;
       if (profile!.id === user_id) {
-        const index = chat.pendingMessages.findIndex(
-          ([_epoch, _]) => _epoch === epoch
-        );
-        if (index !== -1) {
-          chat.pendingMessages.splice(index, 1);
-          isChatModified = true;
-        }
         let isChatInNotifications = false;
         for (let notification of notifications!) {
           if (
@@ -341,17 +361,15 @@ export function AppStateProvider(props: { children: ReactNode }) {
             chatId: chatId,
             isRoom: isRoom,
             isRead: false,
-            timestamp: messageTimestamp,
+            timestamp: new Date(timestamp),
           });
         }
         setNotifications([...notifications!]);
       }
-      return isChatModified;
     };
 
     socketConnection.current?.addEventListener("message", (event) => {
-      const type = event.data["type"];
-      switch (type) {
+      switch (event.data["type"]) {
         case "user_activity": {
           const { user_id, login } = event.data;
           const user = users.get(user_id)!;
@@ -397,16 +415,10 @@ export function AppStateProvider(props: { children: ReactNode }) {
         case "group_chat_message": {
           const { chat_group_id } = event.data;
           const chatGroup = chatGroups.get(chat_group_id)!;
-          if (
-            handleIncomingMessageHumanChat(
-              chatGroup,
-              chat_group_id,
-              false,
-              event.data
-            )
-          ) {
+          if (updateChatMessages(chatGroup, event.data)) {
             setChatGroups(new Map(chatGroups));
           }
+          updateNotifications(chat_group_id, false, event.data);
           break;
         }
         case "room_chat_message": {
@@ -424,45 +436,45 @@ export function AppStateProvider(props: { children: ReactNode }) {
           } else if (chatRoom.chatRoomId === 0) {
             chatRoom.chatRoomId = chat_room_id;
           }
-          if (
-            handleIncomingMessageHumanChat(
-              chatRoom,
-              chat_room_id,
-              true,
-              event.data
-            )
-          ) {
+          if (updateChatMessages(chatRoom, event.data)) {
             setChatRooms(new Map(chatRooms));
           }
+          updateNotifications(chat_room_id, true, event.data);
           break;
         }
         case "bot_chat_message": {
-          const { messages, epoch } = event.data;
-          if (messages) {
-            const index = chatBot.pendingMessages.findIndex(
-              ([_epoch, _]) => _epoch === epoch
-            );
-            if (index !== -1) {
-              chatBot.pendingMessages.splice(index, 1);
-            }
-            if (!chatBot.until) {
-              chatBot.messages = [];
-              chatBot.until = new Date(messages[0]["timestamp"]);
-            }
-            (messages as any[]).forEach(({ user_id, message, timestamp }) =>
-              chatBot.messages?.push({
-                userId: user_id,
-                message: message,
-                timestamp: new Date(timestamp),
-              })
-            );
+          if (updateChatMessages(chatBot, event.data)) {
             setChatBot({ ...chatBot });
           }
           break;
         }
       }
     });
+
+    const fetchMessages = (endpoint: string, chat: Chat, before: boolean) =>
+      new Promise<void>((resolve, reject) => {
+        sendRequest(
+          "GET",
+          endpoint,
+          { timestamp: chat.until, before: before },
+          (response: any) => {
+            const messages = response as any[];
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const [_, user_id, message, timestamp] = messages[i];
+              chat.messages!.unshift({
+                userId: user_id,
+                message: message,
+                timestamp: new Date(timestamp),
+              });
+            }
+            resolve();
+          },
+          reject
+        );
+      });
+
     return {
+      token,
       profile,
       users,
       notifications,
@@ -471,25 +483,130 @@ export function AppStateProvider(props: { children: ReactNode }) {
       chatRooms,
       chatBot,
 
-      updateProfile: (update: User) => new Promise<any>(() => {}),
-      updateNotification: (userId: number) => new Promise<any>(() => {}),
-      registerChatGroup: (groupName: string) => new Promise<any>(() => {}),
+      updateProfile: (update: User) =>
+        new Promise<void>((resolve, reject) =>
+          sendRequest(
+            "PUT",
+            "users/profile",
+            {
+              first_name: undefined || update.firstName,
+              last_name: undefined || update.lastName,
+              password: update.password,
+            },
+            (_: any) => {
+              profile!.firstName ||= update.firstName;
+              profile!.lastName ||= update.lastName;
+              profile!.password ||= update.password;
+              setProfile({ ...profile! });
+              resolve();
+            },
+            reject
+          )
+        ),
+      updateNotification: (chatId: number, isRoom: boolean) =>
+        new Promise<void>((resolve, reject) => {
+          sendRequest(
+            "PUT",
+            "notifications",
+            { chat_id: chatId, is_room: isRoom },
+            (_: any) => {
+              for (let notification of notifications!) {
+                if (
+                  notification.isRoom === isRoom &&
+                  notification.chatId === chatId
+                ) {
+                  if (!notification.isRead) {
+                    notification.isRead = true;
+                    setNotifications([...notifications!]);
+                  }
+                  break;
+                }
+              }
+              resolve();
+            },
+            reject
+          );
+        }),
+      registerChatGroup: (groupName: string) =>
+        new Promise<void>((resolve, reject) =>
+          sendRequest(
+            "POST",
+            "chat_groups",
+            { name: groupName },
+            resolve,
+            reject
+          )
+        ),
       updateChatGroup: (newGroupName?: string, newOwnerId?: number) =>
-        new Promise<any>(() => {}),
-      getChatGroupAccessRequests: (chatGroupId: number) =>
-        new Promise<any>(() => {}),
+        new Promise<void>((resolve, reject) =>
+          sendRequest(
+            "PUT",
+            "chat_groups",
+            { name: newGroupName, owner_id: newOwnerId },
+            resolve,
+            reject
+          )
+        ),
       registerChatGroupAccessRequest: (chatGroupId: number) =>
-        new Promise<any>(() => {}),
+        new Promise<void>((resolve, reject) =>
+          sendRequest(
+            "POST",
+            `chat_groups/access_requests/${chatGroupId}`,
+            undefined,
+            (response: any) => {
+              userAccessRequests!.push({
+                chatGroupId: chatGroupId,
+                timestamp: new Date(response),
+              });
+              setUserAccessRequests([...userAccessRequests!]);
+              resolve();
+            },
+            reject
+          )
+        ),
       reviewChatGroupAccessRequest: (
         chatGroupId: number,
-        requesterId: number
-      ) => new Promise<any>(() => {}),
-      getGroupChatMessages: (chatGroupId: number, pastScrolling: boolean) =>
-        new Promise<any>(() => {}),
-      getRoomChatMessages: (chatRoomId: number, pastScrolling: boolean) =>
-        new Promise<any>(() => {}),
-      getBotChatMessages: (pastScrolling: boolean) =>
-        new Promise<any>(() => {}),
+        requesterId: number,
+        access: boolean
+      ) =>
+        new Promise<void>((resolve, reject) =>
+          sendRequest(
+            "PUT",
+            `chat_groups/access_requests/${chatGroupId}`,
+            { requester_id: requesterId, access: access },
+            resolve,
+            reject
+          )
+        ),
+      getGroupChatMessages: (chatGroupId: number, before: boolean) =>
+        new Promise<void>((resolve, reject) => {
+          const chatGroup = chatGroups.get(chatGroupId)!;
+          fetchMessages(`chat_groups/${chatGroupId}`, chatGroup, before)
+            .then(() => {
+              setChatGroups(new Map(chatGroups));
+              resolve();
+            })
+            .catch(reject);
+        }),
+      getRoomChatMessages: (chatRoomId: number, before: boolean) =>
+        new Promise<void>((resolve, reject) => {
+          const chatRoom = chatRooms.get(chatRoomId)!;
+          fetchMessages(`chat_groups/${chatRoomId}`, chatRoom, before)
+            .then(() => {
+              setChatRooms(new Map(chatRooms));
+              resolve();
+            })
+            .catch(reject);
+        }),
+      getBotChatMessages: (before: boolean) =>
+        new Promise<void>((resolve, reject) => {
+          fetchMessages("chat_bot", chatBot, before)
+            .then(() => {
+              setChatBot({ ...chatBot });
+              resolve();
+            })
+            .catch(reject);
+        }),
       sendMessage: (socketMessage: SocketMessage) => {
         if (token && socketMessage.message) {
           const epoch = +new Date();

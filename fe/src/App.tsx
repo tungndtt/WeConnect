@@ -1,11 +1,13 @@
-import { AppStateProvider } from "./AppStateProvider";
-import { Route, Routes, Navigate, useNavigate } from "react-router-dom";
+import { useContext } from "react";
+import { AppStateProvider, AppStateContext } from "./AppStateProvider";
+import { Route, Routes, Navigate } from "react-router-dom";
 import Header from "./components/Header";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import ChatOptions from "./pages/ChatOptions";
 import Profile from "./pages/Profile";
-import HumanChat from "./pages/HumanChat";
+import GroupChat from "./pages/GroupChat";
+import RoomChat from "./pages/RoomChat";
 import BotChat from "./pages/BotChat";
 
 function App() {
@@ -30,18 +32,26 @@ function App() {
         }
       />
       <Route
-        path="/bot_chat"
+        path="/group_chat/:groupId"
         element={
           <PrivateRoute>
-            <BotChat />
+            <GroupChat />
           </PrivateRoute>
         }
       />
       <Route
-        path="/human_chat"
+        path="/room_chat/:userId"
         element={
           <PrivateRoute>
-            <HumanChat />
+            <RoomChat />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/bot_chat"
+        element={
+          <PrivateRoute>
+            <BotChat />
           </PrivateRoute>
         }
       />
@@ -50,9 +60,9 @@ function App() {
 }
 
 function PrivateRoute(props: { children: JSX.Element }) {
-  const navigate = useNavigate();
+  const { token } = useContext(AppStateContext);
 
-  return true ? (
+  return token ? (
     <AppStateProvider>
       <Header />
       {props.children}
