@@ -86,9 +86,10 @@ async def handle_register_chat_group(request):
 @verify_request
 async def handle_update_chat_group(request):
     request_body = await request.json()
-    if "name" not in request_body or "group_id" not in request_body or "owner_id" not in request_body:
+    chat_group_id = request.match_info.get("group-id", "")
+    if not chat_group_id or "name" not in request_body or "owner_id" not in request_body:
         return generate_json_response(
-            False, "Cannot update chat group name without specified fields 'group_id', 'name', 'owner_id'"
+            False, "Cannot update chat group without specified chat group id, fields 'name' and 'owner_id'"
         )
     chat_group_id = request_body["group_id"]
     group_name = request_body["name"]
@@ -101,4 +102,32 @@ async def handle_update_chat_group(request):
             "name": group_name, 
             "owner_id": owner_id
         })
+    return generate_json_response(status, None)
+
+@verify_request
+async def handle_unregister_access_request(request):
+    request_body = await request.json()
+    chat_group_id = request.match_info.get("group-id", "")
+    if not chat_group_id or "user_id" not in request_body:
+        return generate_json_response(
+            False, "Cannot unregister access request without specified chat group id or field 'user_id'"
+        )
+    user_id = request.user_id
+    removed_user_id = request_body["user_id"]
+    if user_id == removed_user_id or dao().is_chat_group_owner(user_id, chat_group_id):
+        is_leave = dao().unregister_access_request(user_id, chat_group_id)
+        if is_leave is None:
+            status = False
+        else:
+            status = True
+            await unicast_user(
+                removed_user_id,
+                {
+                    "type": "unregister_access_request",
+                    "chat_group_id": chat_group_id,
+                    "is_leave": is_leave
+                }
+            )
+    else:
+        status = False
     return generate_json_response(status, None)

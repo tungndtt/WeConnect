@@ -29,7 +29,8 @@ from be.server.http.chat_group import (
     handle_register_chat_group, 
     handle_update_chat_group,
     handle_get_group_access_requests,
-    handle_register_access_request
+    handle_register_access_request,
+    handle_unregister_access_request
 )
 
 
@@ -50,8 +51,9 @@ http_routes = [
     web.get("/http/chat_groups", handle_get_chat_groups),
     web.get("/http/chat_groups/{group-id}", handle_get_chat_group),
     web.post("/http/chat_groups", handle_register_chat_group),
-    web.put("/http/chat_groups", handle_update_chat_group),
+    web.put("/http/chat_groups/{group-id}", handle_update_chat_group),
     web.get("/http/chat_groups/access_requests/{group-id}", handle_get_group_access_requests),
     web.post("/http/chat_groups/access_requests/{group-id}", handle_register_access_request),
     web.put("/http/chat_groups/access_requests/{group-id}", handle_review_access_request),
+    web.delete("/http/chat_groups/access_requests/{group-id}", handle_unregister_access_request),
 ]

@@ -74,7 +74,7 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 
 2. Update chat group:
 
-- Send update request `PUT /chat_groups {"header": {"authentication": <token>}, "data": {"name": int}}`
+- Send update request `PUT /chat_groups/{group-id} {"header": {"authentication": <token>}, "data": {"name": int}}`
 - Notify all online users `SOCKET {"type": "group_chat_update", "chat_group_id": number, "name": str, "owner_id": number}`
 
 3. Request to access chat group:
@@ -88,6 +88,11 @@ Socket is mounted under `/socket` and Http is mounted under `/http`
 5. Review access request:
 
 - Send request `PUT /chat_groups/access_requests/{group-id} {"header": {"authentication": <token>}, "data": {"requester_id": int, "access": bool}}`
+
+6. (Self)remove user/access request from the chat group:
+
+- Send request `DELETE /chat_groups/access_requests/{group-id} {"header": {"authentication": <token>}, "data": {"user_id": int}}`
+- Notify the removed user `SOCKET {"type": "unregister_access_request", "chat_group_id": number, "is_leave": bool}`
 
 ### User actions:
 

@@ -78,7 +78,7 @@ class Database:
         self.__cursor.execute(
             f"""
             SELECT user_id
-            FROM chat_group_{chat_group_id}_requests
+            FROM chat_group_{chat_group_id}_access_requests
             WHERE access = ?
             """,
             (True)
@@ -524,6 +524,17 @@ class Database:
             self.__connection.rollback()
             return False
     
+    def is_chat_group_owner(self, user_id: int, chat_group_id: int) -> bool:
+        self.__cursor.execute(
+            f"""
+            SELECT *
+            FROM chat_groups
+            WHERE id = ? AND owner_id = ?
+            """,
+            (chat_group_id, user_id)
+        )
+        return self.__cursor.fetchone() is not None
+
     def update_access_request(
         self, 
         reviewer_id: int, 
@@ -532,16 +543,8 @@ class Database:
         access: bool
     ) -> Optional[str]:
         try:
-            self.__cursor.execute(
-                f"""
-                SELECT *
-                FROM chat_groups
-                WHERE id = ? AND owner_id = ?
-                """,
-                (chat_group_id, reviewer_id)
-            )
             current_timestamp = None
-            if self.__cursor.fetchone() is None:
+            if not self.is_chat_group_owner(reviewer_id, chat_group_id):
                 return current_timestamp
             if access:
                 # upsert group access request
@@ -606,5 +609,51 @@ class Database:
             return current_timestamp
         except Exception as error:
             print("[Database]: Cannot update access notification: " + error)
+            self.__connection.rollback()
+            return None
+
+    def unregister_access_request(self, user_id: int, chat_group_id: int) -> Optional[bool]:
+        try:
+            if self.is_chat_group_owner(user_id, chat_group_id):
+                return False
+            self.__cursor.execute(
+                f"""
+                SELECT access
+                FROM chat_group_{chat_group_id}_access_requests
+                WHERE user_id = ?
+                """,
+                (user_id)
+            )
+            row = self.__cursor.fetchone()
+            if row is None:
+                return None
+            self.__cursor.execute(
+                f"""
+                DELETE FROM chat_group_{chat_group_id}_access_requests
+                WHERE user_id = ?
+                """,
+                (user_id, True)
+            )
+            access = row[0]
+            if access:
+                self.__cursor.execute(
+                    f"""
+                    DELETE FROM user_{user_id}_chat_notifications
+                    WHERE chat_id = ? AND is_room = ?
+                    """,
+                    (chat_group_id, True)
+                )
+            else:
+                self.__cursor.execute(
+                    f"""
+                    DELETE FROM user_{user_id}_access_requests
+                    WHERE chat_group_id = ?
+                    """,
+                    (chat_group_id)
+                )
+            self.__connection.commit()
+            return access
+        except Exception as error:
+            print("[Database]: Cannot unregister user access request: " + error)
             self.__connection.rollback()
             return None
