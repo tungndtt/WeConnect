@@ -64,6 +64,7 @@ interface AppState {
   updateNotification: (chatId: number, isRoom: boolean) => Promise<void>;
   registerChatGroup: (groupName: string) => Promise<void>;
   updateChatGroup: (
+    chatGroupId: number,
     newGroupName?: string,
     newOwnerId?: number
   ) => Promise<void>;
@@ -73,13 +74,17 @@ interface AppState {
     requesterId: number,
     acess: boolean
   ) => Promise<void>;
+  ungregisterChatGroupAccessRequest: (
+    chatGroupId: number,
+    userId: number
+  ) => Promise<void>;
   getGroupChatMessages: (chatGroupId: number, before: boolean) => Promise<void>;
   getRoomChatMessages: (chatRoomId: number, before: boolean) => Promise<void>;
   getBotChatMessages: (before: boolean) => Promise<void>;
   sendMessage: (message: SocketMessage) => void;
-  signIn: (email: string, password: string) => Promise<any>;
-  signOut: () => Promise<any>;
-  signUp: (information: User) => Promise<any>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  signUp: (information: User) => Promise<void>;
 }
 
 interface SocketMessage {
@@ -107,24 +112,29 @@ export const AppStateContext = createContext<AppState>({
   updateNotification: (_chatId: number, _isRoom: boolean) =>
     new Promise<void>(() => {}),
   registerChatGroup: (_groupName: string) => new Promise<void>(() => {}),
-  updateChatGroup: (_newGroupName?: string, _newOwnerId?: number) =>
-    new Promise<void>(() => {}),
+  updateChatGroup: (
+    _chatGroupId: number,
+    _newGroupName?: string,
+    _newOwnerId?: number
+  ) => new Promise<void>(() => {}),
   registerChatGroupAccessRequest: (_chatGroupId: number) =>
     new Promise<void>(() => {}),
   reviewChatGroupAccessRequest: (
     _chatGroupId: number,
     _requesterId: number,
     _access: boolean
-  ) => new Promise<any>(() => {}),
+  ) => new Promise<void>(() => {}),
+  ungregisterChatGroupAccessRequest: (_chatGroupId: number, _userId: number) =>
+    new Promise<void>(() => {}),
   getGroupChatMessages: (_chatGroupId: number, _before: boolean) =>
     new Promise<void>(() => {}),
   getRoomChatMessages: (_chatRoomId: number, _before: boolean) =>
     new Promise<void>(() => {}),
   getBotChatMessages: (_before: boolean) => new Promise<void>(() => {}),
   sendMessage: (_message: SocketMessage) => {},
-  signIn: (_email: string, _password: string) => new Promise<any>(() => {}),
-  signOut: () => new Promise<any>(() => {}),
-  signUp: (_information: User) => new Promise<any>(() => {}),
+  signIn: (_email: string, _password: string) => new Promise<void>(() => {}),
+  signOut: () => new Promise<void>(() => {}),
+  signUp: (_information: User) => new Promise<void>(() => {}),
 });
 
 const HOST = "127.0.0.1";
@@ -303,6 +313,22 @@ export function AppStateProvider(props: { children: ReactNode }) {
       socketConnection.current = undefined;
       sessionStorage.setItem("token", "");
     }
+
+    return () => {
+      sessionStorage.set("botchat_timestamp", chatBot.until?.toString());
+      for (let [chatGroupId, chatGroup] of chatGroups.entries()) {
+        sessionStorage.set(
+          `groupchat_timestamp-${chatGroupId}`,
+          chatGroup.until?.toString()
+        );
+      }
+      for (let [chatRoomId, chatRoom] of chatRooms.entries()) {
+        sessionStorage.set(
+          `roomchat_timestamp-${chatRoomId}`,
+          chatRoom.until?.toString()
+        );
+      }
+    };
   }, [token]);
 
   const appState: AppState = useMemo(() => {
@@ -410,6 +436,31 @@ export function AppStateProvider(props: { children: ReactNode }) {
             chatGroup.ownerId = owner_id;
           }
           setChatGroups(new Map(chatGroups));
+          break;
+        }
+        case "unregister_access_request": {
+          const { chat_group_id, is_leave } = event.data;
+          chatGroups.delete(chat_group_id);
+          setChatGroups(new Map(chatGroups));
+          if (is_leave) {
+            const index = notifications!.findIndex(
+              (notification: Notification) =>
+                !notification.isRoom && notification.chatId === chat_group_id
+            );
+            if (index !== -1) {
+              notifications!.splice(index, 1);
+              setNotifications([...notifications!]);
+            }
+          } else {
+            const index = userAccessRequests!.findIndex(
+              (userAccessRequest: UserAccessRequest) =>
+                !userAccessRequest.chatGroupId === chat_group_id
+            );
+            if (index !== -1) {
+              userAccessRequests!.splice(index, 1);
+              setUserAccessRequests([...userAccessRequests!]);
+            }
+          }
           break;
         }
         case "group_chat_message": {
@@ -537,11 +588,15 @@ export function AppStateProvider(props: { children: ReactNode }) {
             reject
           )
         ),
-      updateChatGroup: (newGroupName?: string, newOwnerId?: number) =>
+      updateChatGroup: (
+        chatGroupId: number,
+        newGroupName?: string,
+        newOwnerId?: number
+      ) =>
         new Promise<void>((resolve, reject) =>
           sendRequest(
             "PUT",
-            "chat_groups",
+            `chat_groups/${chatGroupId}`,
             { name: newGroupName, owner_id: newOwnerId },
             resolve,
             reject
@@ -574,6 +629,19 @@ export function AppStateProvider(props: { children: ReactNode }) {
             "PUT",
             `chat_groups/access_requests/${chatGroupId}`,
             { requester_id: requesterId, access: access },
+            resolve,
+            reject
+          )
+        ),
+      ungregisterChatGroupAccessRequest: (
+        chatGroupId: number,
+        userId: number
+      ) =>
+        new Promise<void>((resolve, reject) =>
+          sendRequest(
+            "DELETE",
+            `chat_groups/access_requests/${chatGroupId}`,
+            { user_id: userId },
             resolve,
             reject
           )
@@ -647,33 +715,33 @@ export function AppStateProvider(props: { children: ReactNode }) {
         }
       },
       signIn: (email: string, password: string) =>
-        new Promise<any>((resolve, reject) =>
+        new Promise<void>((resolve, reject) =>
           sendRequest(
             "POST",
             "login",
             { email, password },
             (response: any) => {
               setToken(response["token"]);
-              resolve(response);
+              resolve();
             },
             reject
           )
         ),
       signOut: () =>
-        new Promise<any>((resolve, reject) =>
+        new Promise<void>((resolve, reject) =>
           sendRequest(
             "GET",
             "logout",
             undefined,
-            (response: any) => {
+            (_: any) => {
               setToken("");
-              resolve(response);
+              resolve();
             },
             reject
           )
         ),
       signUp: (information: User) =>
-        new Promise<any>((resolve, reject) =>
+        new Promise<void>((resolve, reject) =>
           sendRequest(
             "POST",
             "register",
@@ -683,9 +751,9 @@ export function AppStateProvider(props: { children: ReactNode }) {
               first_name: information.firstName,
               last_name: information.lastName,
             },
-            (response: any) => {
+            (_: any) => {
               setToken("");
-              resolve(response);
+              resolve();
             },
             reject
           )
