@@ -7,58 +7,62 @@ import {
   useEffect,
 } from "react";
 
-interface User {
-  id?: number;
+type User = {
+  id: number;
   firstName: string;
   lastName: string;
   email?: string;
   password?: string;
   isOnline?: boolean;
-}
-
-interface Notification {
+};
+type Notification = {
   userId: number;
   chatId: number;
   isRoom: boolean;
   isRead: boolean;
   timestamp: Date;
-}
-
-interface UserAccessRequest {
+};
+type UserAccessRequest = {
   chatGroupId: number;
   timestamp: Date;
-}
-
-interface Message {
+};
+type Message = {
   userId: number;
   message: string;
   timestamp: Date;
-}
-
-interface Chat {
+};
+type Chat = {
   until?: Date;
   messages: Message[] | undefined;
   pendingMessages: [number, string][];
-}
-
-interface ChatGroup extends Chat {
+};
+type ChatGroup = Chat & {
   name: string;
   ownerId: number;
-}
-
-interface ChatRoom extends Chat {
+};
+type ChatRoom = Chat & {
   chatRoomId: number;
-}
-
-interface AppState {
+};
+type UserMap = { [userId: number]: User };
+type ChatGroupMap = { [chatGroupId: number]: ChatGroup };
+type ChatRoomMap = { [userId: number]: ChatRoom };
+type SocketMessage = {
+  chatType: "group" | "room" | "bot";
+  message: string;
+  other_user_id?: number;
+  chat_group_id?: number;
+};
+type AppState = {
   token: string;
   profile: User | undefined;
-  users: Map<number, User>;
-  notifications: Notification[] | undefined;
-  userAccessRequests: UserAccessRequest[] | undefined;
-  chatGroups: Map<number, ChatGroup>;
-  chatRooms: Map<number, ChatRoom>;
+  users: UserMap;
+  notifications: Notification[];
+  userAccessRequests: UserAccessRequest[];
+  chatGroups: ChatGroupMap;
+  chatRooms: ChatRoomMap;
   chatBot: Chat;
+
+  getUserNameAbbreviation: (userId: number) => string;
 
   updateProfile: (update: User) => Promise<void>;
   updateNotification: (chatId: number, isRoom: boolean) => Promise<void>;
@@ -83,30 +87,25 @@ interface AppState {
   getBotChatMessages: (before: boolean) => Promise<void>;
   sendMessage: (message: SocketMessage) => void;
   signIn: (email: string, password: string) => Promise<void>;
-  signOut: () => Promise<void>;
+  signOut: () => void;
   signUp: (information: User) => Promise<void>;
-}
-
-interface SocketMessage {
-  chatType: "group" | "room" | "bot";
-  message: string;
-  other_user_id?: number;
-  chat_group_id?: number;
-}
+};
 
 export const AppStateContext = createContext<AppState>({
   token: "",
   profile: undefined,
-  users: new Map<number, User>(),
-  notifications: undefined,
-  userAccessRequests: undefined,
-  chatGroups: new Map<number, ChatGroup>(),
-  chatRooms: new Map<number, ChatRoom>(),
+  users: {},
+  notifications: [],
+  userAccessRequests: [],
+  chatGroups: {},
+  chatRooms: {},
   chatBot: {
     until: undefined,
     messages: undefined,
     pendingMessages: [] as [number, string][],
   },
+
+  getUserNameAbbreviation: (_userId: number) => "",
 
   updateProfile: (_update: User) => new Promise<void>(() => {}),
   updateNotification: (_chatId: number, _isRoom: boolean) =>
@@ -133,7 +132,7 @@ export const AppStateContext = createContext<AppState>({
   getBotChatMessages: (_before: boolean) => new Promise<void>(() => {}),
   sendMessage: (_message: SocketMessage) => {},
   signIn: (_email: string, _password: string) => new Promise<void>(() => {}),
-  signOut: () => new Promise<void>(() => {}),
+  signOut: () => {},
   signUp: (_information: User) => new Promise<void>(() => {}),
 });
 
@@ -142,19 +141,17 @@ const PORT = 2204;
 
 export function AppStateProvider(props: { children: ReactNode }) {
   const [token, setToken] = useState(sessionStorage.getItem("token") || "");
-  const socketConnection = useRef(undefined as WebSocket | undefined);
+  const socketConnection = useRef<WebSocket | undefined>(undefined);
 
-  const [profile, setProfile] = useState(undefined as User | undefined);
-  const [users, setUsers] = useState(new Map<number, User>());
-  const [notifications, setNotifications] = useState(
-    undefined as Notification[] | undefined
-  );
-  const [userAccessRequests, setUserAccessRequests] = useState(
-    undefined as UserAccessRequest[] | undefined
-  );
+  const [profile, setProfile] = useState<User | undefined>(undefined);
+  const [users, setUsers] = useState<UserMap>({});
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [userAccessRequests, setUserAccessRequests] = useState<
+    UserAccessRequest[]
+  >([]);
 
-  const [chatGroups, setChatGroups] = useState(new Map<number, ChatGroup>());
-  const [chatRooms, setChatRooms] = useState(new Map<number, ChatRoom>());
+  const [chatGroups, setChatGroups] = useState<ChatGroupMap>({});
+  const [chatRooms, setChatRooms] = useState<ChatRoomMap>({});
   const [chatBot, setChatBot] = useState({
     until: undefined,
     messages: undefined,
@@ -196,17 +193,17 @@ export function AppStateProvider(props: { children: ReactNode }) {
         messages: undefined,
         pendingMessages: [],
       });
-      const roomChatTimestamps = new Map<number, Date>();
-      const groupChatTimestamps = new Map<number, Date>();
+      const roomChatTimestamps = {} as { [chatRoomId: number]: Date };
+      const groupChatTimestamps = {} as { [chatGroupId: number]: Date };
       for (let i = 0; i < sessionStorage.length; i++) {
         const key = sessionStorage.key(i) as string;
         const timestamp = sessionStorage.getItem(key) as string;
         if (key.startsWith("roomchat_timestamp-")) {
           const roomId = Number(key.substring("roomchat_timestamp-".length));
-          roomChatTimestamps.set(roomId, new Date(timestamp));
+          roomChatTimestamps[roomId] = new Date(timestamp);
         } else if (key.startsWith("groupchat_timestamp-")) {
           const groupId = Number(key.substring("groupchat_timestamp-".length));
-          groupChatTimestamps.set(groupId, new Date(timestamp));
+          groupChatTimestamps[groupId] = new Date(timestamp);
         }
       }
 
@@ -219,6 +216,179 @@ export function AppStateProvider(props: { children: ReactNode }) {
         console.log("Disconnected to server");
         socketConnection.current?.close();
         setToken("");
+      });
+      socketConnection.current?.addEventListener("message", (event) => {
+        const updateChatMessages = (chat: Chat, data: any) => {
+          const messageEpoch = data["epoch"];
+          const messages = "messages" in data ? data["messages"] : [data];
+          let isModified = false;
+          if (profile!.id === messages[0]["user_id"]) {
+            const index = chat.pendingMessages.findIndex(
+              ([pendingEpoch, _]) => pendingEpoch === messageEpoch
+            );
+            if (index !== -1) {
+              chat.pendingMessages.splice(index, 1);
+              isModified = true;
+            }
+          }
+          if (!chat.until) {
+            chat.messages = [];
+            chat.until = new Date(messages[0]["timestamp"]);
+            isModified = true;
+          }
+          for (let { user_id, message, timestamp } of messages) {
+            if (message) {
+              chat.messages!.push({
+                userId: user_id,
+                message: message,
+                timestamp: new Date(timestamp),
+              });
+              isModified = true;
+            }
+          }
+          return isModified;
+        };
+
+        const updateNotifications = (
+          chatId: number,
+          isRoom: boolean,
+          data: any
+        ) => {
+          const { user_id, timestamp } = data;
+          if (profile!.id === user_id) {
+            setNotifications((_notifications: Notification[]) => {
+              let isChatInNotifications = false;
+              for (let _notification of _notifications!) {
+                if (
+                  _notification.isRoom === isRoom &&
+                  _notification.chatId === chatId
+                ) {
+                  _notification.isRead = false;
+                  isChatInNotifications = true;
+                  break;
+                }
+              }
+              if (!isChatInNotifications) {
+                _notifications!.push({
+                  userId: user_id,
+                  chatId: chatId,
+                  isRoom: isRoom,
+                  isRead: false,
+                  timestamp: new Date(timestamp),
+                });
+              }
+              return [..._notifications!];
+            });
+          }
+        };
+
+        switch (event.data["type"]) {
+          case "user_activity": {
+            const { user_id, login } = event.data;
+            setUsers((_users: UserMap) => ({
+              ..._users,
+              [user_id]: { ..._users[user_id], isOnline: login },
+            }));
+            break;
+          }
+          case "user_update": {
+            const { user_id, first_name, last_name } = event.data;
+            setUsers((_users: UserMap) => ({
+              ..._users,
+              [user_id]: {
+                ..._users[user_id],
+                firstName: first_name,
+                lastName: last_name,
+              },
+            }));
+            break;
+          }
+          case "group_chat_update": {
+            const { chat_group_id, name, owner_id } = event.data;
+            setChatGroups((_chatGroups: ChatGroupMap) => ({
+              ..._chatGroups,
+              [chat_group_id]: {
+                ..._chatGroups[chat_group_id],
+                ownerId: owner_id,
+                name: name,
+              },
+            }));
+            break;
+          }
+          case "unregister_access_request": {
+            const { chat_group_id, is_leave } = event.data;
+            delete chatGroups[chat_group_id];
+            setChatGroups({ ...chatGroups });
+            if (is_leave) {
+              setNotifications((_notifications: Notification[]) => {
+                const index = _notifications!.findIndex(
+                  (notification: Notification) =>
+                    !notification.isRoom &&
+                    notification.chatId === chat_group_id
+                );
+                _notifications!.splice(index, 1);
+                return [..._notifications];
+              });
+            } else {
+              setUserAccessRequests(
+                (_userAccessRequests: UserAccessRequest[]) => {
+                  const index = userAccessRequests!.findIndex(
+                    (userAccessRequest: UserAccessRequest) =>
+                      !userAccessRequest.chatGroupId === chat_group_id
+                  );
+                  _userAccessRequests!.splice(index, 1);
+                  return [..._userAccessRequests];
+                }
+              );
+            }
+            break;
+          }
+          case "group_chat_message": {
+            const { chat_group_id } = event.data;
+            setChatGroups((_chatGroups: ChatGroupMap) => {
+              const _chatGroup = _chatGroups[chat_group_id];
+              return updateChatMessages(_chatGroup, event.data)
+                ? { ..._chatGroups, [chat_group_id]: _chatGroup }
+                : _chatGroups;
+            });
+            updateNotifications(chat_group_id, false, event.data);
+            break;
+          }
+          case "room_chat_message": {
+            const { user_id, other_user_id, chat_room_id } = event.data;
+            setChatRooms((_chatRooms: ChatRoomMap) => {
+              const otherUserId =
+                profile!.id === user_id ? other_user_id : user_id;
+              let _chatRoom = _chatRooms[otherUserId];
+              if (!_chatRoom) {
+                _chatRoom = {
+                  chatRoomId: chat_room_id,
+                  messages: undefined,
+                  until: undefined,
+                  pendingMessages: [],
+                };
+                _chatRooms[otherUserId] = _chatRoom;
+              } else if (_chatRoom.chatRoomId === 0) {
+                _chatRoom.chatRoomId = chat_room_id;
+              }
+              return updateChatMessages(_chatRoom, event.data)
+                ? { ...chatRooms, [otherUserId]: _chatRoom }
+                : _chatRooms;
+            });
+            updateNotifications(chat_room_id, true, event.data);
+            break;
+          }
+          case "bot_chat_message": {
+            if (updateChatMessages(chatBot, event.data)) {
+              setChatBot((_chatBot: Chat) =>
+                updateChatMessages(_chatBot, event.data)
+                  ? { ..._chatBot }
+                  : _chatBot
+              );
+            }
+            break;
+          }
+        }
       });
 
       Promise.all(
@@ -251,20 +421,19 @@ export function AppStateProvider(props: { children: ReactNode }) {
             email: fprofile[3],
             password: fprofile[4],
           });
-          const musers = new Map(
-            (fusers["users"] as any[]).map((fuser: any) => [
-              fuser[0],
-              {
-                firstName: fuser[0],
-                lastName: fuser[1],
-                isOnline: false,
-              },
-            ])
-          );
+          const _users = {} as UserMap;
+          (fusers["users"] as any[]).forEach((fuser: any) => {
+            _users[fuser[0]] = {
+              id: fuser[0],
+              firstName: fuser[1],
+              lastName: fuser[2],
+              isOnline: false,
+            };
+          });
           for (let fonlineUserId of fusers["online_user_ids"] as number[]) {
-            musers.get(fonlineUserId)!.isOnline = true;
+            _users[fonlineUserId]!.isOnline = true;
           }
-          setUsers(musers);
+          setUsers(_users);
           setNotifications(
             (fnotifications as any[]).map((fnotification: any) => ({
               userId: fnotification[0],
@@ -280,33 +449,27 @@ export function AppStateProvider(props: { children: ReactNode }) {
               timestamp: fUserAcessRequest[1],
             }))
           );
-          setChatGroups(
-            new Map(
-              (fchatGroups as any[]).map((fchatGroup: any) => [
-                fchatGroup[0],
-                {
-                  name: fchatGroup[1],
-                  ownerId: fchatGroup[2],
-                  until: groupChatTimestamps.get(fchatGroup[0]),
-                  messages: undefined,
-                  pendingMessages: [],
-                },
-              ])
-            )
-          );
-          setChatRooms(
-            new Map(
-              (fchatRooms as any[]).map((fchatRoom: any) => [
-                fchatRoom[1],
-                {
-                  chatRoomId: fchatRoom[0],
-                  until: roomChatTimestamps.get(fchatRoom[0]),
-                  messages: undefined,
-                  pendingMessages: [],
-                },
-              ])
-            )
-          );
+          const _chatGroups = {} as ChatGroupMap;
+          (fchatGroups as any[]).forEach((fchatGroup: any) => {
+            _chatGroups[fchatGroup[0]] = {
+              name: fchatGroup[1],
+              ownerId: fchatGroup[2],
+              until: groupChatTimestamps[fchatGroup[0]],
+              messages: undefined,
+              pendingMessages: [],
+            };
+          });
+          setChatGroups(_chatGroups);
+          const _chatRooms = {} as ChatRoomMap;
+          (fchatRooms as any[]).forEach((fchatRoom: any) => {
+            _chatRooms[fchatRoom[1]] = {
+              chatRoomId: fchatRoom[0],
+              until: roomChatTimestamps[fchatRoom[0]],
+              messages: undefined,
+              pendingMessages: [],
+            };
+          });
+          setChatRooms(_chatRooms);
         }
       );
     } else {
@@ -316,13 +479,13 @@ export function AppStateProvider(props: { children: ReactNode }) {
 
     return () => {
       sessionStorage.set("botchat_timestamp", chatBot.until?.toString());
-      for (let [chatGroupId, chatGroup] of chatGroups.entries()) {
+      for (let [chatGroupId, chatGroup] of Object.entries(chatGroups)) {
         sessionStorage.set(
           `groupchat_timestamp-${chatGroupId}`,
           chatGroup.until?.toString()
         );
       }
-      for (let [chatRoomId, chatRoom] of chatRooms.entries()) {
+      for (let [chatRoomId, chatRoom] of Object.entries(chatRooms)) {
         sessionStorage.set(
           `roomchat_timestamp-${chatRoomId}`,
           chatRoom.until?.toString()
@@ -332,176 +495,6 @@ export function AppStateProvider(props: { children: ReactNode }) {
   }, [token]);
 
   const appState: AppState = useMemo(() => {
-    const updateChatMessages = (chat: Chat, data: any) => {
-      const messageEpoch = data["epoch"];
-      const messages = "messages" in data ? data["messages"] : [data];
-      let isModified = false;
-      if (profile!.id === messages[0]["user_id"]) {
-        const index = chatBot.pendingMessages.findIndex(
-          ([pendingEpoch, _]) => pendingEpoch === messageEpoch
-        );
-        if (index !== -1) {
-          chat.pendingMessages.splice(index, 1);
-          isModified = true;
-        }
-      }
-      if (!chat.until) {
-        chat.messages = [];
-        chat.until = new Date(messages[0]["timestamp"]);
-        isModified = true;
-      }
-      for (let { user_id, message, timestamp } of messages) {
-        if (message) {
-          chat.messages!.push({
-            userId: user_id,
-            message: message,
-            timestamp: new Date(timestamp),
-          });
-          isModified = true;
-        }
-      }
-      return isModified;
-    };
-
-    const updateNotifications = (
-      chatId: number,
-      isRoom: boolean,
-      data: any
-    ) => {
-      const { user_id, timestamp } = data;
-      if (profile!.id === user_id) {
-        let isChatInNotifications = false;
-        for (let notification of notifications!) {
-          if (
-            notification.isRoom === isRoom &&
-            notification.chatId === chatId
-          ) {
-            notification.isRead = false;
-            isChatInNotifications = true;
-            break;
-          }
-        }
-        if (!isChatInNotifications) {
-          notifications!.push({
-            userId: user_id,
-            chatId: chatId,
-            isRoom: isRoom,
-            isRead: false,
-            timestamp: new Date(timestamp),
-          });
-        }
-        setNotifications([...notifications!]);
-      }
-    };
-
-    socketConnection.current?.addEventListener("message", (event) => {
-      switch (event.data["type"]) {
-        case "user_activity": {
-          const { user_id, login } = event.data;
-          const user = users.get(user_id)!;
-          user.isOnline = login;
-          setUsers(new Map(users));
-          break;
-        }
-        case "user_update": {
-          const { user_id, first_name, last_name } = event.data;
-          let user = users.get(user_id);
-          if (!user) {
-            user = {
-              firstName: first_name,
-              lastName: last_name,
-            };
-            users.set(user_id, user);
-          } else {
-            user.firstName = first_name;
-            user.lastName = last_name;
-          }
-          setUsers(new Map(users));
-          break;
-        }
-        case "group_chat_update": {
-          const { chat_group_id, name, owner_id } = event.data;
-          let chatGroup = chatGroups.get(chat_group_id);
-          if (!chatGroup) {
-            chatGroup = {
-              name: name,
-              ownerId: owner_id,
-              messages: undefined,
-              until: undefined,
-              pendingMessages: [],
-            };
-            chatGroups.set(chat_group_id, chatGroup);
-          } else {
-            chatGroup.name = name;
-            chatGroup.ownerId = owner_id;
-          }
-          setChatGroups(new Map(chatGroups));
-          break;
-        }
-        case "unregister_access_request": {
-          const { chat_group_id, is_leave } = event.data;
-          chatGroups.delete(chat_group_id);
-          setChatGroups(new Map(chatGroups));
-          if (is_leave) {
-            const index = notifications!.findIndex(
-              (notification: Notification) =>
-                !notification.isRoom && notification.chatId === chat_group_id
-            );
-            if (index !== -1) {
-              notifications!.splice(index, 1);
-              setNotifications([...notifications!]);
-            }
-          } else {
-            const index = userAccessRequests!.findIndex(
-              (userAccessRequest: UserAccessRequest) =>
-                !userAccessRequest.chatGroupId === chat_group_id
-            );
-            if (index !== -1) {
-              userAccessRequests!.splice(index, 1);
-              setUserAccessRequests([...userAccessRequests!]);
-            }
-          }
-          break;
-        }
-        case "group_chat_message": {
-          const { chat_group_id } = event.data;
-          const chatGroup = chatGroups.get(chat_group_id)!;
-          if (updateChatMessages(chatGroup, event.data)) {
-            setChatGroups(new Map(chatGroups));
-          }
-          updateNotifications(chat_group_id, false, event.data);
-          break;
-        }
-        case "room_chat_message": {
-          const { user_id, other_user_id, chat_room_id } = event.data;
-          const otherUserId = profile!.id === user_id ? other_user_id : user_id;
-          let chatRoom = chatRooms.get(otherUserId);
-          if (!chatRoom) {
-            chatRoom = {
-              chatRoomId: chat_room_id,
-              messages: undefined,
-              until: undefined,
-              pendingMessages: [],
-            };
-            chatRooms.set(otherUserId, chatRoom);
-          } else if (chatRoom.chatRoomId === 0) {
-            chatRoom.chatRoomId = chat_room_id;
-          }
-          if (updateChatMessages(chatRoom, event.data)) {
-            setChatRooms(new Map(chatRooms));
-          }
-          updateNotifications(chat_room_id, true, event.data);
-          break;
-        }
-        case "bot_chat_message": {
-          if (updateChatMessages(chatBot, event.data)) {
-            setChatBot({ ...chatBot });
-          }
-          break;
-        }
-      }
-    });
-
     const fetchMessages = (endpoint: string, chat: Chat, before: boolean) =>
       new Promise<void>((resolve, reject) => {
         sendRequest(
@@ -533,6 +526,14 @@ export function AppStateProvider(props: { children: ReactNode }) {
       chatGroups,
       chatRooms,
       chatBot,
+
+      getUserNameAbbreviation: (userId: number) => {
+        const user = users[userId];
+        return user
+          ? user.firstName.charAt(0).toUpperCase() +
+              user.lastName.charAt(0).toUpperCase()
+          : "";
+      },
 
       updateProfile: (update: User) =>
         new Promise<void>((resolve, reject) =>
@@ -648,20 +649,20 @@ export function AppStateProvider(props: { children: ReactNode }) {
         ),
       getGroupChatMessages: (chatGroupId: number, before: boolean) =>
         new Promise<void>((resolve, reject) => {
-          const chatGroup = chatGroups.get(chatGroupId)!;
+          const chatGroup = chatGroups[chatGroupId];
           fetchMessages(`chat_groups/${chatGroupId}`, chatGroup, before)
             .then(() => {
-              setChatGroups(new Map(chatGroups));
+              setChatGroups({ ...chatGroups, [chatGroupId]: chatGroup });
               resolve();
             })
             .catch(reject);
         }),
-      getRoomChatMessages: (chatRoomId: number, before: boolean) =>
+      getRoomChatMessages: (userId: number, before: boolean) =>
         new Promise<void>((resolve, reject) => {
-          const chatRoom = chatRooms.get(chatRoomId)!;
-          fetchMessages(`chat_groups/${chatRoomId}`, chatRoom, before)
+          const chatRoom = chatRooms[userId];
+          fetchMessages(`chat_rooms/${chatRoom.chatRoomId}`, chatRoom, before)
             .then(() => {
-              setChatRooms(new Map(chatRooms));
+              setChatRooms({ ...chatRooms, [userId]: chatRoom });
               resolve();
             })
             .catch(reject);
@@ -687,13 +688,13 @@ export function AppStateProvider(props: { children: ReactNode }) {
           );
           switch (socketMessage.chatType) {
             case "group": {
-              const chatGroup = chatGroups.get(socketMessage.chat_group_id!)!;
+              const chatGroup = chatGroups[socketMessage.chat_group_id!];
               chatGroup.pendingMessages.push([epoch, socketMessage.message]);
-              setChatGroups(new Map(chatGroups));
+              setChatGroups({ ...chatGroups });
               break;
             }
             case "room": {
-              let chatRoom = chatRooms.get(socketMessage.other_user_id!);
+              let chatRoom = chatRooms[socketMessage.other_user_id!];
               if (!chatRoom) {
                 chatRoom = {
                   chatRoomId: 0,
@@ -701,10 +702,10 @@ export function AppStateProvider(props: { children: ReactNode }) {
                   until: undefined,
                   pendingMessages: [],
                 };
-                chatRooms.set(socketMessage.other_user_id!, chatRoom);
+                chatRooms[socketMessage.other_user_id!] = chatRoom;
               }
               chatRoom.pendingMessages.push([epoch, socketMessage.message]);
-              setChatRooms(new Map(chatRooms));
+              setChatRooms({ ...chatRooms });
               break;
             }
             default: {
@@ -728,17 +729,12 @@ export function AppStateProvider(props: { children: ReactNode }) {
           )
         ),
       signOut: () =>
-        new Promise<void>((resolve, reject) =>
-          sendRequest(
-            "GET",
-            "logout",
-            undefined,
-            (_: any) => {
-              setToken("");
-              resolve();
-            },
-            reject
-          )
+        sendRequest(
+          "GET",
+          "logout",
+          undefined,
+          (_: any) => setToken(""),
+          () => {}
         ),
       signUp: (information: User) =>
         new Promise<void>((resolve, reject) =>

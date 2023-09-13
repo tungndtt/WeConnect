@@ -15,7 +15,7 @@ function App() {
   return (
     <>
       <Header />
-      <Box width="100%">
+      <Box width="100%" height="calc(100% - var(--header-height))">
         <Routes>
           <Route path="/" element={<SignIn />} />
           <Route path="/register" element={<SignUp />} />
